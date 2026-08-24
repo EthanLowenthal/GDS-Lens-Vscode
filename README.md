@@ -136,10 +136,18 @@ The coordinate under the pointer is shown as `X: … Y: …` below the scale bar
 always in microns; zoom sets the precision, to a tenth of the grid's current
 step.
 
+**Right-click the layout → Copy coordinate** puts the coordinate of the pixel
+you clicked on the clipboard as `X=…, Y=…`, with the same digits the readout is
+showing. It pastes straight back into **Go to Coordinate**, or into a script or
+a message.
+
 **GDSLens: Go to Coordinate** centers the view on a coordinate you paste in —
 microns unless a number carries its own `nm`/`um`/`µm`/`mm`, and the decorations
 DRC reports and messages wrap them in (parentheses, `x=`/`y=`, commas or bare
-spaces) are all accepted. The zoom is left alone.
+spaces) are all accepted. The zoom is left alone. A crosshair marks where you
+landed and fades out after a couple of seconds, so the spot is visible even when
+the point sits off-centre — which it does whenever a coordinate lands near (or
+outside) the edge of the design.
 
 ### DRC/LVS markers
 

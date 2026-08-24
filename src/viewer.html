@@ -144,6 +144,38 @@
                         border: 1px solid var(--border-strong); border-radius: 3px; padding: 2px 6px;
                         white-space: nowrap; }
         #coordReadout.hidden { display: none; }
+        /* Confirmation that the canvas menu's Copy coordinate reached the
+           clipboard (see the contextmenu handler in viewer.js). Same scrim as
+           the readout it answers for. It sits first in the column on purpose:
+           #viewReadout is anchored by its bottom edge, so a line appearing at
+           the top leaves the scale bar and the coordinate exactly where they
+           were -- one added at the bottom would shove both up mid-read. */
+        #copyToast { font-family: monospace; font-size: 11px; color: var(--fg); background: var(--label-scrim);
+                     border: 1px solid var(--border-strong); border-radius: 3px; padding: 2px 6px;
+                     white-space: nowrap; }
+        #copyToast.hidden { display: none; }
+        /* Right-click menu on the canvas (see the contextmenu handler in
+           viewer.js). VS Code's own webview menu is suppressed for it -- the
+           preload bails out of showing one when the page has already called
+           preventDefault -- so this has to look like a menu on its own. It
+           borrows the panel's palette rather than the readouts' scrim: it sits
+           over the layout but it's chrome, not an annotation of what's under
+           it. Above the debug panel (z 41), since a menu is the most recent
+           thing the user asked for. */
+        #canvasMenu { position: absolute; z-index: 50; min-width: 190px; padding: 4px;
+                      background: var(--panel-bg); color: var(--panel-fg);
+                      border: 1px solid var(--border-strong); border-radius: 4px;
+                      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4); }
+        #canvasMenu.hidden { display: none; }
+        #canvasMenu button { display: flex; align-items: baseline; gap: 14px; width: 100%;
+                             background: none; border: 0; border-radius: 3px; padding: 4px 8px;
+                             font-family: inherit; font-size: 12px; color: inherit;
+                             text-align: left; white-space: nowrap; cursor: pointer; }
+        #canvasMenu button:hover, #canvasMenu button:focus { background: var(--accent); color: var(--accent-fg); outline: none; }
+        /* The coordinate itself, shown in the readout's monospace so it reads as
+           the value being copied rather than as a menu shortcut. */
+        #canvasMenu .menu-value { margin-left: auto; font-family: monospace; font-size: 11px; color: var(--fg-dim); }
+        #canvasMenu button:hover .menu-value, #canvasMenu button:focus .menu-value { color: inherit; }
         /* The bar is drawn in the ink color over an outline of the background,
            so it stays readable whichever of the two it happens to sit on top of
            (it floats over the geometry, not over a panel). */
@@ -489,6 +521,7 @@
     <button id="debugToggleBtn" type="button">Debug tools</button>
 
     <div id="viewReadout">
+        <div id="copyToast" class="hidden"></div>
         <div id="scaleContainer">
             <div id="scaleLabel">0 μm</div>
             <div id="scaleBar" style="width: 100px;"></div>
@@ -497,6 +530,12 @@
     </div>
 
     <div id="measureLabels"></div>
+
+    <div id="canvasMenu" class="hidden" role="menu">
+        <button id="canvasMenuCopy" type="button" role="menuitem">
+            <span>Copy coordinate</span><span class="menu-value"></span>
+        </button>
+    </div>
 
     <!-- Base64 of gdstk_wasm.js's + wasm-worker.js's concatenated text (see
          extension.cjs) -- inert (not executed) since "text/plain" isn't a JS

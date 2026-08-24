@@ -356,10 +356,24 @@ float g_bbox_max_x = -HUGE_VALF;
 float g_bbox_min_y = HUGE_VALF;
 float g_bbox_max_y = -HUGE_VALF;
 
-// Zoom bounds are relative to the fit-to-window zoom rather than absolute,
-// so they scale with whatever unit the design happens to be drawn in.
+// Zoom-out is bounded relative to the fit-to-window zoom, so how far you can
+// back a design off depends on the design: 20x past fitting it is 20x past
+// fitting it whether that is a die or a single cell.
 constexpr float kMinZoomRatio = 0.05f;
-constexpr float kMaxZoomRatio = 2000.0f;
+
+// Zoom-in is bounded absolutely instead, in pixels per micron. It can be:
+// every file's coordinates are normalized to microns at parse time (unit=1e-6
+// in bindings.cpp -- see update_scale_bar), so a pixels-per-micron number
+// means the same thing in every layout, which a ratio against the fit zoom
+// does not. A fit-relative ceiling let you in ~1nm deep on a small cell and
+// only ~50nm deep on a full die, purely because the die's bbox is bigger.
+//
+// The value is the deepest zoom at which the scale bar still reads 2nm: at
+// 60000 px/um the 120px-target bar lands exactly on 2nm and the grid's fine
+// decade is 1nm drawn at a 60px pitch (one notch further in and both halve).
+// That pair -- 2nm bar, 1nm grid -- is the intended bottom of the range, so
+// the constant is pinned to it rather than to a round power of ten.
+constexpr float kMaxZoomPxPerUm = 60000.0f;
 
 bool g_dragging = false;
 int g_last_mouse_x = 0;
@@ -439,6 +453,28 @@ constexpr float kHighlightMinPx = 20.0f;
 // for that frame; reaching it at all means the outlines are already a solid mat
 // of dashes, where the thousandth box changes nothing anyone can see.
 constexpr size_t kMaxHighlightVerts = 240000;
+
+// "Go to Coordinate" flash: a crosshair dropped on the coordinate the view was
+// just sent to, which fades out on its own a couple of seconds later. Panning
+// to a coordinate leaves it at the centre of the screen with nothing to say
+// which pixel it actually is -- and once the clamp in goToPoint has had its
+// say, or the view is nudged afterwards, it isn't even the centre any more.
+// The crosshair is what points at the spot; it expires rather than needing to
+// be dismissed, because a pasted coordinate is a place you're being shown, not
+// a selection you're holding (unlike the cell outlines, which are).
+//
+// Screen-sized like every other annotation here, with a gap at the middle so
+// the crosshair frames the point instead of covering it.
+float g_goto_x = 0.0f;
+float g_goto_y = 0.0f;
+double g_goto_start_ms = -1.0;  // negative: nothing flashing
+GLuint g_goto_vbo = 0;
+constexpr double kGotoHoldMs = 1300.0;  // full strength, then:
+constexpr double kGotoFadeMs = 900.0;   // faded out over this
+constexpr float kGotoGapPx = 7.0f;      // clear space either side of the point
+constexpr float kGotoArmPx = 30.0f;     // where each arm ends
+constexpr float kGotoRingPx = 14.0f;    // radius of the ring the arms cross
+constexpr int kGotoRingSegments = 24;
 
 bool g_frame_requested = false;
 
@@ -1054,6 +1090,20 @@ double grid_fine_spacing() {
     return fine;
 }
 
+// How many decimals the pointer coordinate is written with at the current
+// zoom -- see format_coord_pair below for why that is the grid's business.
+// Split out because the clipboard form (getCoordinateTextAt) has to
+// agree with it digit for digit: copying a coordinate that reads differently
+// from the one on screen is copying a different number as far as anyone
+// reading it is concerned.
+int coord_readout_decimals() {
+    double step = grid_fine_spacing();
+    if (!(step > 0.0)) step = 1.0;
+    // Exact: step is a power of ten by construction.
+    const int decade = (int)std::lround(std::log10(step));
+    return std::clamp(1 - decade, 0, 6);
+}
+
 // The pointer readout's "X: … Y: …" line. Always microns -- the unit the whole
 // viewer works in -- rather than switching to nm or mm the way the scale bar and
 // the ruler do. Those two report one distance at a time, where the unit is free
@@ -1067,11 +1117,7 @@ double grid_fine_spacing() {
 // %.4g that count is fixed for both halves of the pair, since a decimal point
 // that shifts as the pointer crosses zero is unreadable.
 std::string format_coord_pair(double x_um, double y_um) {
-    double step = grid_fine_spacing();
-    if (!(step > 0.0)) step = 1.0;
-    // Exact: step is a power of ten by construction.
-    const int decade = (int)std::lround(std::log10(step));
-    const int decimals = std::clamp(1 - decade, 0, 6);
+    const int decimals = coord_readout_decimals();
     char buf[128];
     // µm, UTF-8.
     snprintf(buf, sizeof(buf), "X: %.*f  Y: %.*f \xC2\xB5m", decimals, x_um, decimals, y_um);
@@ -1094,6 +1140,33 @@ void update_coord_readout() {
     screen_to_world(g_cursor_x, g_cursor_y, wx, wy);
     el.set("textContent", format_coord_pair(wx, wy));
     el["classList"].call<void>("remove", std::string("hidden"));
+}
+
+// The world coordinate at a canvas pixel, as clipboard text. Called with the
+// position of a right-click, which is why it takes one rather than reading the
+// tracked pointer: the menu answers for the pixel that was clicked, and nothing
+// has to stay true about where the pointer wandered while the menu was open.
+//
+// Canvas pixels are CSS pixels here -- resize_canvas sizes the canvas from
+// window.innerWidth/Height with no devicePixelRatio scaling -- so the webview
+// hands a mouse event's clientX/clientY straight in.
+//
+// "X=…, Y=…" rather than the readout's "X: … Y: … µm" because a copied
+// coordinate is going somewhere: back into "Go to Coordinate", into a script,
+// into a message to whoever asked where the short was. That shape is one the
+// parser on the other end already reads (coord-parse.js), and it stays readable
+// as prose; the trailing unit does not survive that round trip, and every
+// number this viewer produces is microns anyway.
+//
+// The digits are the readout's, so what lands on the clipboard is what was on
+// screen -- more would be precision the zoom never showed anyone.
+std::string getCoordinateTextAt(double screen_x, double screen_y) {
+    float wx, wy;
+    screen_to_world((float)screen_x, (float)screen_y, wx, wy);
+    const int decimals = coord_readout_decimals();
+    char buf[128];
+    snprintf(buf, sizeof(buf), "X=%.*f, Y=%.*f", decimals, (double)wx, decimals, (double)wy);
+    return buf;
 }
 
 // One ruler's readout: the distance, then its components and the angle it runs
@@ -1603,7 +1676,11 @@ void draw_text() {
 
 float clamp_zoom_value(float zoom) {
     float min_zoom = g_fit_zoom * kMinZoomRatio;
-    float max_zoom = g_fit_zoom * kMaxZoomRatio;
+    // max() rather than the constant alone: a design small enough that framing
+    // it already needs more than kMaxZoomPxPerUm (a handful of nm across, or a
+    // point marker's degenerate box) still has to be able to reach its own fit
+    // zoom, or zoom-to-fit would be clamped away from actually fitting.
+    float max_zoom = std::max(kMaxZoomPxPerUm, g_fit_zoom);
     return std::clamp(zoom, min_zoom, max_zoom);
 }
 
@@ -2077,6 +2154,61 @@ void draw_cell_highlight() {
     glDrawArrays(GL_TRIANGLES, 0, (GLsizei)(verts.size() / 2));
 }
 
+// Defined just below draw_frame with the rest of the frame plumbing; declared
+// here because draw_frame itself asks for the next frame while the Go to
+// Coordinate flash is still fading.
+void request_redraw();
+
+// The Go to Coordinate crosshair, in the same blue as the selected-cell ring:
+// both are the viewer pointing at a place you asked about, and the ruler's ink
+// and the marker overlay's red already mean other things. Drawn last of the
+// annotations so nothing hides the one thing the view was just moved for.
+//
+// Time-based rather than frame-based, since frames only happen when something
+// asks for one -- draw_frame keeps requesting the next one while this is alive,
+// and stops as soon as it expires (below), so the flash costs a couple of
+// seconds of animation and nothing at all afterwards.
+void draw_goto_flash(double now_ms) {
+    if (g_goto_start_ms < 0.0) return;
+    const double age = std::max(0.0, now_ms - g_goto_start_ms);
+    if (age >= kGotoHoldMs + kGotoFadeMs) {
+        g_goto_start_ms = -1.0;
+        return;
+    }
+    const float fade =
+        age <= kGotoHoldMs ? 1.0f : (float)(1.0 - (age - kGotoHoldMs) / kGotoFadeMs);
+
+    const float gap = kGotoGapPx / g_zoom;
+    const float arm = kGotoArmPx / g_zoom;
+    const float r = kGotoRingPx / g_zoom;
+    const float x = g_goto_x, y = g_goto_y;
+
+    std::vector<float> verts = {
+        x - arm, y, x - gap, y,  // west
+        x + gap, y, x + arm, y,  // east
+        x, y - arm, x, y - gap,  // south
+        x, y + gap, x, y + arm,  // north
+    };
+    constexpr float kPi = 3.14159265358979323846f;
+    for (int i = 0; i < kGotoRingSegments; i++) {
+        const float a0 = 2.0f * kPi * (float)i / (float)kGotoRingSegments;
+        const float a1 = 2.0f * kPi * (float)(i + 1) / (float)kGotoRingSegments;
+        verts.insert(verts.end(), {x + r * std::cos(a0), y + r * std::sin(a0),
+                                   x + r * std::cos(a1), y + r * std::sin(a1)});
+    }
+
+    if (!g_goto_vbo) glGenBuffers(1, &g_goto_vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, g_goto_vbo);
+    buffer_data_tracked(GL_ARRAY_BUFFER, g_goto_vbo, (GLsizeiptr)(verts.size() * sizeof(float)),
+                        verts.data(), GL_DYNAMIC_DRAW);
+    glEnableVertexAttribArray(g_loc_position);
+    glVertexAttribPointer(g_loc_position, 2, GL_FLOAT, GL_FALSE, 0, 0);
+    glUniform4f(g_loc_color, g_highlight_color[0], g_highlight_color[1], g_highlight_color[2],
+                0.95f * fade);
+    glUniform1f(g_loc_use_hatch, 0.0f);
+    glDrawArrays(GL_LINES, 0, (GLsizei)(verts.size() / 2));
+}
+
 bool draw_frame(double time, void* /*userData*/) {
     g_frame_requested = false;
     // `time` is the rAF timestamp (ms); the delta between consecutive frames
@@ -2208,6 +2340,10 @@ bool draw_frame(double time, void* /*userData*/) {
     // about the layout, so it can't be buried by it), under the ruler.
     draw_cell_highlight();
     draw_measure_line();
+    draw_goto_flash(time);
+    // The flash is the only thing here that changes without an input event, so
+    // it -- and only it -- keeps the frames coming while it lasts.
+    if (g_goto_start_ms >= 0.0) request_redraw();
     update_measure_labels();
     // Here rather than at each camera-moving entry point: the world coordinate
     // under a stationary pointer changes with every one of them (wheel zoom,
@@ -2291,6 +2427,9 @@ void clear_layers() {
     // back; dropping them here is what stops a *different* file inheriting
     // rectangles drawn around nothing.
     g_highlight_boxes.clear();
+    // Same reasoning for the Go to Coordinate crosshair: it marks a spot in the
+    // file being replaced.
+    g_goto_start_ms = -1.0;
     // The label ranges index into g_layers -- they can't outlive it.
     g_text_ranges.clear();
     g_total_labels = 0;
@@ -3017,6 +3156,12 @@ val build_hierarchy(Library& lib, const std::vector<Cell*>& roots) {
 }
 
 bool on_mousedown(int /*eventType*/, const EmscriptenMouseEvent* e, void* /*userData*/) {
+    // The right button opens the canvas menu (see the contextmenu handler in
+    // viewer.js) and does nothing else: without this it would also arm a pan,
+    // and in measure mode it would drop a ruler point under the menu that just
+    // appeared. Not consumed (false) -- the browser still has to raise the
+    // contextmenu event that the menu is listening for.
+    if (e->button == 2) return false;
     if (g_measure_mode) {
         // Click-click measurement: first click anchors the start point (the
         // line then tracks the cursor via on_mousemove), second click finishes
@@ -4442,7 +4587,7 @@ void setMarkerOpacity(double opacity) {
 // epsilon to keep the division finite: a zero-width axis then contributes an
 // astronomical zoom candidate that either loses the min() to the real axis
 // (an edge) or -- for a pure point -- gets capped by clamp_zoom_value's
-// kMaxZoomRatio ceiling, which is exactly the "as close as the camera goes"
+// kMaxZoomPxPerUm ceiling, which is exactly the "as close as the camera goes"
 // framing a point marker wants. Anything larger here (an earlier version
 // floored the box at 20px-at-fit-zoom worth of world space) swamps typical
 // sub-µm DRC markers and leaves the view zoomed way out.
@@ -4484,6 +4629,22 @@ bool goToPoint(double x, double y) {
     float half_h = (float)g_canvas_height * 0.5f / g_zoom;
     return std::fabs((double)g_pan_x - x) <= (double)half_w &&
            std::fabs((double)g_pan_y - y) <= (double)half_h;
+}
+
+// Drops the fading crosshair on a world coordinate (see draw_goto_flash). Its
+// own call rather than part of goToPoint, because the two callers of the pan
+// want different marks: "Go to Coordinate" has nothing but the coordinate to
+// point at, while a label search already leaves its own box around the label it
+// found, and two annotations on one spot say no more than one does.
+void flashPoint(double x, double y) {
+    if (!g_gl_ready) return;
+    if (!std::isfinite(x) || !std::isfinite(y)) return;
+    g_goto_x = (float)x;
+    g_goto_y = (float)y;
+    // performance.now(), the same clock the rAF timestamps draw_goto_flash
+    // compares against come from.
+    g_goto_start_ms = emscripten_get_now();
+    request_redraw();
 }
 
 // Outlines world-space boxes on the canvas -- one per placement of the cell the
@@ -4578,7 +4739,9 @@ EMSCRIPTEN_BINDINGS(gdstk_renderer_module) {
     function("setMarkerOpacity", &setMarkerOpacity);
     function("zoomToBox", &zoomToBox);
     function("goToPoint", &goToPoint);
+    function("flashPoint", &flashPoint);
     function("setCellHighlight", &setCellHighlight);
     function("clearCellHighlight", &clearCellHighlight);
     function("getMarkerStats", &getMarkerStats);
+    function("getCoordinateTextAt", &getCoordinateTextAt);
 }

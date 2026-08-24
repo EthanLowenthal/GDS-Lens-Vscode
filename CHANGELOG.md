@@ -1,5 +1,25 @@
 # Change Log
 
+## [Unreleased]
+
+- **The zoom-in limit is the same in every layout**: 2nm on the scale bar, a 1nm
+  grid.** How far in you could go used to be a multiple of the zoom that fits the
+  design in the window, which sounds neutral and isn't — it made the deepest view
+  a fixed fraction of the design rather than a fixed size.
+
+- **Go to Coordinate marks the spot it took you to.** A crosshair drops on the
+  coordinate and fades out a couple of seconds later. Centering alone didn't say
+  which pixel you'd landed on, and the middle of the screen isn't the answer
+  anyway: the camera is held inside the design's bounds, so a coordinate near an
+  edge lands off-centre.
+
+- **Right-click the layout to copy the coordinate you clicked.** The readout in
+  the corner could tell you where the pointer was but not hand it to anyone —
+  getting a coordinate into a script, a bug report or a message meant reading it
+  off the screen and typing it back in. **Copy coordinate** puts it on the
+  clipboard as `X=…, Y=…`. The menu is the canvas's alone: right-clicking
+  the panels still gets VS Code's.
+
 ## [1.6.2] - 2026-08-21
 
 - **A find box in the hierarchy panel, over cells and labels.** The panel could
@@ -493,7 +513,7 @@
     (`@2` and up) are skipped instead of misapplied.
 - Debug overlay shows frame time / fps.
 
-## [1.0.0]
+## [1.0.0] - 2026-07-07
 
 Initial release.
 

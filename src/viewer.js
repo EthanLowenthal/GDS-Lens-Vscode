@@ -1612,6 +1612,98 @@ function stepMarker(direction) {
     modulePromise.then((Module) => selectMarker(Module, items[idx]));
 }
 
+// ---- Right-click menu on the canvas ----
+// Right-clicking the layout offers the coordinate of the pixel that was
+// clicked. Right-click is where "what is this, exactly" lives in every other
+// tool, and it needs nothing to have been read beforehand -- unlike a shortcut,
+// which only helps someone who already knows it's there.
+//
+// VS Code shows its own menu over a webview, but its preload skips that when
+// the page has already called preventDefault ("Extension code has already
+// handled this event"), which is what makes a menu of our own possible at all.
+// It only covers the canvas: right-clicking the panels still gets VS Code's
+// menu, since a coordinate means nothing there.
+const copyToastEl = document.getElementById("copyToast");
+let copyToastTimer = 0;
+function showCopyToast(text) {
+    if (!copyToastEl) return;
+    copyToastEl.textContent = text;
+    copyToastEl.classList.remove("hidden");
+    clearTimeout(copyToastTimer);
+    copyToastTimer = setTimeout(() => copyToastEl.classList.add("hidden"), 1800);
+}
+
+const canvasMenuEl = document.getElementById("canvasMenu");
+const canvasMenuCopyEl = document.getElementById("canvasMenuCopy");
+const canvasMenuValueEl = canvasMenuEl && canvasMenuEl.querySelector(".menu-value");
+// The text the open menu is offering, captured when it opened. Held here rather
+// than re-read on click because the click happens after the pointer has moved
+// off the spot -- onto the menu item -- and the coordinate has to stay the one
+// that was right-clicked.
+let canvasMenuText = "";
+
+function hideCanvasMenu() {
+    if (canvasMenuEl) canvasMenuEl.classList.add("hidden");
+}
+
+function showCanvasMenu(clientX, clientY, text) {
+    if (!canvasMenuEl) return;
+    canvasMenuText = text;
+    if (canvasMenuValueEl) canvasMenuValueEl.textContent = text;
+    // Unhide first: the menu has no size to measure while it's display:none.
+    canvasMenuEl.classList.remove("hidden");
+    // Keep it on screen -- a right-click near the bottom or right edge would
+    // otherwise open a menu that runs off it.
+    const margin = 4;
+    const maxLeft = window.innerWidth - canvasMenuEl.offsetWidth - margin;
+    const maxTop = window.innerHeight - canvasMenuEl.offsetHeight - margin;
+    canvasMenuEl.style.left = Math.max(margin, Math.min(clientX, maxLeft)) + "px";
+    canvasMenuEl.style.top = Math.max(margin, Math.min(clientY, maxTop)) + "px";
+    // Focus makes Enter and Escape work without a second reach for the mouse,
+    // and lights the row the way hovering it does.
+    if (canvasMenuCopyEl) canvasMenuCopyEl.focus();
+}
+
+if (glCanvas && canvasMenuEl && canvasMenuCopyEl) {
+    glCanvas.addEventListener("contextmenu", (event) => {
+        // Nothing to offer until the renderer is up (there's no camera yet, so
+        // no coordinate) -- leave the event alone and let VS Code's menu open,
+        // rather than swallowing the click for a menu that can't answer.
+        if (!resolvedModule) return;
+        event.preventDefault();
+        showCanvasMenu(event.clientX, event.clientY,
+                       resolvedModule.getCoordinateTextAt(event.clientX, event.clientY));
+    });
+
+    canvasMenuCopyEl.addEventListener("click", () => {
+        const text = canvasMenuText;
+        hideCanvasMenu();
+        navigator.clipboard.writeText(text).then(
+            () => showCopyToast("Copied \u2014 " + text),
+            (err) => {
+                // Same failure the debug log's Copy button guards against -- the
+                // Clipboard API can be blocked in a sandboxed webview. There's no
+                // select-and-Ctrl-C fallback for a number that isn't on the page
+                // as selectable text, so the toast has to carry it: it stays up
+                // long enough to read and to retype.
+                console.error("[GDS] clipboard write failed for coordinate:", err);
+                showCopyToast("Couldn't copy \u2014 " + text);
+            }
+        );
+    });
+
+    // Everything that means "not that, then": a click anywhere else (capture
+    // phase, so a click on the canvas closes the menu before the renderer acts
+    // on it), zooming or panning the layout out from under it, and leaving the
+    // webview. Escape is handled with the other keys below.
+    window.addEventListener("pointerdown", (event) => {
+        if (!canvasMenuEl.contains(event.target)) hideCanvasMenu();
+    }, true);
+    window.addEventListener("wheel", hideCanvasMenu, { passive: true });
+    window.addEventListener("resize", hideCanvasMenu);
+    window.addEventListener("blur", hideCanvasMenu);
+}
+
 // Capture phase, because every lil-gui controller stopPropagation()s keydown
 // in the bubble phase -- a plain window listener would never hear [ / ]
 // while focus sits anywhere inside the panel, which is the normal state
@@ -1637,6 +1729,12 @@ window.addEventListener("keydown", (event) => {
     // A finished measurement is an annotation, so it shouldn't disappear on the
     // same keystroke that backs out of a half-drawn one.
     else if (event.key === "Escape") {
+        // The canvas menu first and alone: it's the most recent thing put on
+        // screen, and Escape shouldn't also throw away a measurement behind it.
+        if (canvasMenuEl && !canvasMenuEl.classList.contains("hidden")) {
+            hideCanvasMenu();
+            return;
+        }
         modulePromise.then((Module) => {
             if (!Module.escapeMeasure()) setMode("pan");
             refreshRulerRow(Module);
@@ -2147,6 +2245,13 @@ window.addEventListener("message", (event) => {
         // layout, so the answer goes back for the host to report.
         modulePromise.then((Module) => {
             const onScreen = Module.goToPoint(message.x, message.y);
+            // A crosshair on the coordinate itself, which fades out after a
+            // couple of seconds (see draw_goto_flash in renderer.cpp). Panning
+            // alone leaves you looking at a screen of layout with nothing
+            // saying which part of it is the coordinate you pasted -- and when
+            // clamp_pan has to hold the camera inside the design, it isn't even
+            // the middle of the screen.
+            Module.flashPoint(message.x, message.y);
             vscode.postMessage({
                 command: "gotoResult",
                 ok: !!onScreen,
