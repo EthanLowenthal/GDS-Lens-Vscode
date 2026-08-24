@@ -1,5 +1,31 @@
 # Change Log
 
+## [Unreleased]
+
+- **Layouts finish loading in about a quarter of the time.** The triangulation
+  pass — turning every polygon into the triangles the GPU fills — was most of
+  the wait on a large file, and it was doing quadratic work to get there: after
+  clipping each triangle away it restarted its scan from the beginning of the
+  polygon and re-tested every remaining vertex. It now clips against a linked
+  ring and only ever tests the vertices that could actually block a cut, and
+  recognizes the convex case — which is most of a real layout, rectangles above
+  all — as one that needs no clipping at all. On a 37 MB test layout the pass
+  went from 987 ms to about 200 ms, and the load as a whole from 1.04 s to
+  0.25 s.
+
+- **Big polygons are filled properly instead of approximated.** Anything past a
+  point count the old clipper wouldn't attempt got chopped into pieces on a
+  1 nm grid first, which moved its edges slightly and left it drawn from parts
+  rather than as itself — and past that limit a polygon contributed nothing at
+  all to Merge Overlaps' coverage, so a shape you could see would not merge.
+  Concave polygons now go to mapbox's earcut, which handles them whole and
+  eight times larger than before, so a curve stays the curve it was drawn as.
+
+- **Fewer degenerate triangles.** Duplicated and collinear points — which real
+  layouts are full of, and which tools emit deliberately as the self-touching
+  slits that stand in for holes — used to produce zero-area triangles that were
+  drawn and rasterized to nothing. They're dropped now.
+
 ## [1.6.3] - 2026-08-24
 
 - **The zoom-in limit is the same in every layout: 2nm on the scale bar, a 1nm

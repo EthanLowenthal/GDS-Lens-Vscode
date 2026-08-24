@@ -4,3 +4,6 @@
 [submodule "third_party/qhull"]
 	path = third_party/qhull
 	url = https://github.com/qhull/qhull.git
+[submodule "third_party/earcut"]
+	path = third_party/earcut
+	url = https://github.com/mapbox/earcut.hpp.git

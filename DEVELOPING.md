@@ -41,6 +41,10 @@ see [`README.md`](README.md).
   design history of this C++/WASM architecture.
 - `third_party/gdstk`, `third_party/qhull` — git submodules the wasm build
   links against.
+- `third_party/earcut` — git submodule, header-only (`mapbox/earcut.hpp`).
+  Nothing to compile; the build only adds its include path. `triangulate()` in
+  `renderer.cpp` hands it every concave polygon, and specializes
+  `mapbox::util::nth<>` so it reads gdstk's `Vec2` in place.
 - `test/` — plain-Node tests (`npm test`): marker-parser and gzip unit tests plus
   headless tests that eval the built wasm bundle in Node (skipped when
   `src/wasm/build/gdstk_wasm.js` hasn't been built) covering marker state and

@@ -37,6 +37,25 @@
 
 #include <gdstk/gdstk.hpp>
 
+// earcut reads a point's coordinates through this trait, so gdstk's Vec2 can be
+// fed to it directly with no copy or adapter type. Both the header and gdstk
+// have to be included first: the primary template is declared in one and the
+// type being specialized on comes from the other.
+#include <mapbox/earcut.hpp>
+
+namespace mapbox {
+namespace util {
+template <>
+struct nth<0, gdstk::Vec2> {
+    inline static double get(const gdstk::Vec2& p) { return p.x; }
+};
+template <>
+struct nth<1, gdstk::Vec2> {
+    inline static double get(const gdstk::Vec2& p) { return p.y; }
+};
+}  // namespace util
+}  // namespace mapbox
+
 #include "gds_common.hpp"
 #include "lyp_util.hpp"
 #include "shaders.hpp"
@@ -901,90 +920,102 @@ std::string rgba_to_css(const std::array<float, 4>& c) {
     return buf;
 }
 
-// Ear-clipping triangulation for filled rendering. GDS polygons are simple
-// (non-self-intersecting) by convention -- including the "comb" slits some
-// tools use to represent holes -- so plain ear clipping is sufficient; no
-// need for a general/robust tessellator. Capped at kMaxTriangulatePoints
-// since this is naive O(n^3) in the worst case (each of the ~n ear removals
-// rescans the remaining ~n vertices against ~n inside-triangle tests); large
-// polygons just render outline-only rather than risk stalling the load on a
-// single pathological shape. Appends triangle vertex indices (into pts) to
-// out_indices; leaves it untouched (empty, if previously cleared by the
-// caller) on failure.
-constexpr uint64_t kMaxTriangulatePoints = 512;
+// Triangulation for filled rendering, in two tiers.
+//
+// GDS geometry is overwhelmingly convex -- rectangles above all -- and a convex
+// polygon needs no clipping at all: a fan from any vertex is already a valid
+// triangulation, in one linear pass. That path carries the bulk of a real
+// layout, so it is worth the O(n) convexity test to find it.
+//
+// Everything else goes to mapbox's earcut, which beats a hand-rolled ear
+// clipper on exactly the shapes that are expensive: it z-order hashes the
+// vertices above ~80 points so a candidate ear is checked against nearby
+// vertices instead of the whole ring. It also handles, without special-casing,
+// the degenerate inputs real layouts contain -- the self-touching "comb" slits
+// tools emit to represent holes, duplicated and collinear points, and
+// zero-width bridges.
+//
+// Still capped, because earcut is not immune either: a maximally concave
+// polygon costs ~15 ms at 16k points and grows worse than linearly past that.
+// Over the cap the caller falls back to fracture(). Appends triangle vertex
+// indices (into pts) to out_indices; leaves it untouched (empty, if previously
+// cleared by the caller) on failure.
+constexpr uint64_t kMaxTriangulatePoints = 16384;
+
+// Piece size the fracture() fallback cuts to when a polygon is over that cap.
+// Much smaller than the cap: cost per piece is what matters there, and the cuts
+// are also what split away the degeneracies that sent the polygon over.
+constexpr uint64_t kFracturePieceSize = 512;
+
+// Signed area x2 of triangle (o,a,b): > 0 when the turn o->a->b is CCW.
+inline double tri_cross(const Vec2& o, const Vec2& a, const Vec2& b) {
+    return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+}
+
+// Zero-copy views handing gdstk's point array to earcut in place. earcut asks a
+// ring only for value_type/size()/operator[], and a polygon only for
+// empty()/size()/operator[] -- and we always have exactly one ring, since GDS
+// conveys holes as comb slits in the outer boundary rather than as inner rings.
+struct EarcutRing {
+    using value_type = Vec2;
+    const Vec2* points = nullptr;
+    std::size_t n = 0;
+    std::size_t size() const { return n; }
+    const Vec2& operator[](std::size_t i) const { return points[i]; }
+};
+
+struct EarcutPolygon {
+    EarcutRing ring;
+    bool empty() const { return ring.n == 0; }
+    std::size_t size() const { return 1; }
+    const EarcutRing& operator[](std::size_t) const { return ring; }
+};
 
 void triangulate(const Array<Vec2>& pts, std::vector<uint32_t>& out_indices) {
     uint64_t n = pts.count;
     if (n < 3 || n > kMaxTriangulatePoints) return;
 
-    std::vector<uint32_t> remaining(n);
-    for (uint64_t i = 0; i < n; i++) remaining[i] = (uint32_t)i;
-
+    // Convex iff every turn goes the same way as the overall winding. Collinear
+    // turns (cross == 0) don't break a fan -- they just contribute a zero-area
+    // triangle, which rasterizes to nothing.
     double area2 = 0;
     for (uint64_t i = 0; i < n; i++) {
         const Vec2& a = pts[i];
         const Vec2& b = pts[(i + 1) % n];
         area2 += a.x * b.y - b.x * a.y;
     }
-    if (area2 < 0) std::reverse(remaining.begin(), remaining.end());
-
-    auto cross = [](const Vec2& o, const Vec2& a, const Vec2& b) {
-        return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
-    };
-    auto point_in_tri = [&](const Vec2& p, const Vec2& a, const Vec2& b, const Vec2& c) {
-        double d1 = cross(a, b, p);
-        double d2 = cross(b, c, p);
-        double d3 = cross(c, a, p);
-        bool has_neg = (d1 < 0) || (d2 < 0) || (d3 < 0);
-        bool has_pos = (d1 > 0) || (d2 > 0) || (d3 > 0);
-        return !(has_neg && has_pos);
-    };
-
-    uint64_t guard = 0;
-    uint64_t max_iters = n * n + 16;
-    while (remaining.size() > 3 && guard++ < max_iters) {
-        uint64_t m = remaining.size();
-        bool ear_found = false;
-        for (uint64_t i = 0; i < m; i++) {
-            uint64_t iprev = (i + m - 1) % m;
-            uint64_t inext = (i + 1) % m;
-            const Vec2& a = pts[remaining[iprev]];
-            const Vec2& b = pts[remaining[i]];
-            const Vec2& c = pts[remaining[inext]];
-            if (cross(a, b, c) <= 0) continue;  // reflex/collinear vertex, not a convex ear tip
-            bool any_inside = false;
-            for (uint64_t j = 0; j < m; j++) {
-                if (j == iprev || j == i || j == inext) continue;
-                const Vec2& p = pts[remaining[j]];
-                // Keyhole/comb polygons (the self-touching slits tools use to
-                // represent holes) duplicate the slit's bridge vertices, and a
-                // duplicate lands exactly on an ear corner -- point_in_tri is
-                // boundary-inclusive, so without this exemption every ear near
-                // the bridge is vetoed and triangulation stalls at zero.
-                if (p == a || p == b || p == c) continue;
-                if (point_in_tri(p, a, b, c)) {
-                    any_inside = true;
-                    break;
-                }
-            }
-            if (any_inside) continue;
-            out_indices.push_back(remaining[iprev]);
-            out_indices.push_back(remaining[i]);
-            out_indices.push_back(remaining[inext]);
-            remaining.erase(remaining.begin() + i);
-            ear_found = true;
-            break;
+    bool convex = true;
+    for (uint64_t i = 0; i < n && convex; i++) {
+        double cross = tri_cross(pts[(i + n - 1) % n], pts[i], pts[(i + 1) % n]);
+        convex = area2 >= 0 ? cross >= 0 : cross <= 0;
+    }
+    if (convex) {
+        // Fanned in reverse for a clockwise ring, so every triangle this
+        // function emits is CCW no matter how the polygon was wound. Nothing
+        // downstream depends on that today -- fill draws as GL_TRIANGLES with
+        // face culling off -- but earcut normalizes winding on its own path,
+        // and one consistent orientation is worth a loop that costs nothing.
+        for (uint64_t i = 1; i + 1 < n; i++) {
+            uint32_t b = (uint32_t)i;
+            uint32_t c = (uint32_t)(i + 1);
+            out_indices.push_back(0);
+            out_indices.push_back(area2 >= 0 ? b : c);
+            out_indices.push_back(area2 >= 0 ? c : b);
         }
-        // Degenerate input (e.g. self-touching/duplicate points) can leave no
-        // valid ear -- bail with whatever triangles were already found rather
-        // than looping; partial fill is fine, the outline still draws fully.
-        if (!ear_found) return;
+        return;
     }
-    if (remaining.size() == 3) {
-        out_indices.push_back(remaining[0]);
-        out_indices.push_back(remaining[1]);
-        out_indices.push_back(remaining[2]);
-    }
+
+    // Reused across calls so the node pool survives: build_layer_entry runs this
+    // hundreds of thousands of times, and mapbox::earcut() -- the convenience
+    // wrapper -- allocates a fresh pool per call. Safe because nothing here is
+    // re-entrant: build_layer_entry triangulates one polygon at a time, and its
+    // fracture() fallback re-enters only after this has returned.
+    static mapbox::detail::Earcut<uint32_t> earcut;
+    EarcutPolygon polygon;
+    polygon.ring.points = pts.items;
+    polygon.ring.n = (std::size_t)n;
+    earcut(polygon);
+    out_indices.insert(out_indices.end(), earcut.indices.begin(), earcut.indices.end());
 }
 
 // Computes a PolygonRange's world-space bbox from the flat [x0,y0,x1,y1,...]
@@ -3336,12 +3367,13 @@ bool on_resize(int /*eventType*/, const EmscriptenUiEvent* /*e*/, void* /*userDa
 // Triangulates polys (already fully positioned in whatever coordinate frame
 // the caller wants -- world space for static layers, unit space for an
 // instance group's shape) into the same JS-facing
-// {outlineVertices,outlineRanges,fillVertices,fillRanges} layout
-// parseGdsToLayers has always produced, reusable for both. Reports the
+// {outlineVertices,outlineRanges,fillVertices} layout parseGdsToLayers has
+// always produced, reusable for both. Reports the
 // bounding box of every point it consumed via out_min/max (min > max if
 // polys was empty) so the caller can fold it into whatever bbox accumulator
 // applies (design bbox for static layers, unit-shape bbox for a group -- see
 // parseGdsToLayers). Frees every Polygon* in polys before returning.
+
 val build_layer_entry(uint64_t tag, std::vector<Polygon*>& polys, uint64_t& out_polygon_count,
                       double& out_min_x, double& out_max_x, double& out_min_y, double& out_max_y) {
     out_polygon_count = polys.size();
@@ -3356,22 +3388,21 @@ val build_layer_entry(uint64_t tag, std::vector<Polygon*>& polys, uint64_t& out_
     std::vector<float> outline_vertices;
     outline_vertices.reserve(point_total * 2);
     std::vector<float> fill_vertices;
-    val outline_ranges = val::array();
-    val fill_ranges = val::array();
+    // [first, count] pairs, flat: one val::array()/push per polygon crossed
+    // the embind boundary 300k+ times on a routing layer and cost more than
+    // the triangulation itself, and a typed array is transferable rather than
+    // structured-cloned on its way back from the worker.
+    std::vector<uint32_t> outline_ranges;
     std::vector<uint32_t> tri_indices;
 
+    // Fill is drawn as one flat glDrawArrays over the whole layer, so unlike
+    // the outline it needs no per-polygon range -- just the vertices.
     auto append_fill = [&](const Array<Vec2>& pts, const std::vector<uint32_t>& indices) {
-        if (indices.empty()) return;
-        uint32_t fill_first = (uint32_t)(fill_vertices.size() / 2);
         for (uint32_t idx : indices) {
             const Vec2& pt = pts[idx];
             fill_vertices.push_back((float)pt.x);
             fill_vertices.push_back((float)pt.y);
         }
-        val fill_range = val::array();
-        fill_range.set(0, fill_first);
-        fill_range.set(1, (uint32_t)indices.size());
-        fill_ranges.call<void>("push", fill_range);
     };
 
     for (Polygon* poly : polys) {
@@ -3385,10 +3416,8 @@ val build_layer_entry(uint64_t tag, std::vector<Polygon*>& polys, uint64_t& out_
             out_min_y = std::min(out_min_y, pt.y);
             out_max_y = std::max(out_max_y, pt.y);
         }
-        val outline_range = val::array();
-        outline_range.set(0, first);
-        outline_range.set(1, (uint32_t)poly->point_array.count);
-        outline_ranges.call<void>("push", outline_range);
+        outline_ranges.push_back(first);
+        outline_ranges.push_back((uint32_t)poly->point_array.count);
 
         tri_indices.clear();
         triangulate(poly->point_array, tri_indices);
@@ -3410,7 +3439,7 @@ val build_layer_entry(uint64_t tag, std::vector<Polygon*>& polys, uint64_t& out_
             Array<Polygon*> pieces = {};
             // precision = 1e-3: coordinates are in microns (see read_layout's
             // unit argument), so cuts snap to a 1 nm grid.
-            poly->fracture(kMaxTriangulatePoints, 1e-3, pieces);
+            poly->fracture(kFracturePieceSize, 1e-3, pieces);
             if (pieces.count == 0) {
                 // fracture had nothing to offer -- keep whatever partial
                 // triangulation the ear clipper managed.
@@ -3432,9 +3461,8 @@ val build_layer_entry(uint64_t tag, std::vector<Polygon*>& polys, uint64_t& out_
     layer_entry.set("layer", get_layer(tag));
     layer_entry.set("datatype", get_type(tag));
     layer_entry.set("outlineVertices", to_float32_array(outline_vertices));
-    layer_entry.set("outlineRanges", outline_ranges);
+    layer_entry.set("outlineRanges", to_uint32_array(outline_ranges));
     layer_entry.set("fillVertices", to_float32_array(fill_vertices));
-    layer_entry.set("fillRanges", fill_ranges);
 
     for (Polygon* poly : polys) {
         poly->clear();
@@ -3516,8 +3544,8 @@ void shuffle_run_order(std::vector<size_t>& order) {
     }
 }
 
-// Result of uploading one {outlineVertices,outlineRanges,fillVertices,
-// fillRanges} JS entry (as produced by build_layer_entry) to fresh GL
+// Result of uploading one {outlineVertices,outlineRanges,fillVertices}
+// JS entry (as produced by build_layer_entry) to fresh GL
 // buffers -- shared by both uploadLayers' static per-layer path and its
 // per-(instance group, layer) path, which otherwise did the exact same VBO/
 // EBO construction.
@@ -3575,8 +3603,11 @@ UploadedGeometry upload_geometry(val entry) {
     std::vector<float> outline_vertices = convertJSArrayToNumberVector<float>(entry["outlineVertices"]);
     std::vector<float> fill_vertices = convertJSArrayToNumberVector<float>(entry["fillVertices"]);
 
-    val outline_ranges = entry["outlineRanges"];
-    unsigned outline_range_count = outline_ranges["length"].as<unsigned>();
+    // Flat [first, count] pairs -- one bulk copy, versus the three embind
+    // round-trips per polygon that reading an array of two-element JS arrays
+    // element by element used to cost.
+    std::vector<uint32_t> outline_ranges = convertJSArrayToNumberVector<uint32_t>(entry["outlineRanges"]);
+    unsigned outline_range_count = (unsigned)(outline_ranges.size() / 2);
     // Indices for outline_ebo: each polygon's boundary expanded into explicit
     // GL_LINES edge pairs -- (v0,v1), (v1,v2) ... (vN-1,v0), with the closing
     // edge written out rather than implied. Costs ~2 indices per vertex
@@ -3594,9 +3625,8 @@ UploadedGeometry upload_geometry(val entry) {
     std::vector<uint32_t> outline_indices;
     outline_indices.reserve(outline_vertices.size());
     for (unsigned r = 0; r < outline_range_count; r++) {
-        val range = outline_ranges[r];
-        uint32_t first = range[0].as<uint32_t>();
-        uint32_t count = range[1].as<uint32_t>();
+        uint32_t first = outline_ranges[r * 2];
+        uint32_t count = outline_ranges[r * 2 + 1];
         PolygonRange pr = make_range(outline_vertices, (GLint)first, (GLsizei)count);
         g.min_x = std::min(g.min_x, pr.min_x);
         g.max_x = std::max(g.max_x, pr.max_x);

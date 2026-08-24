@@ -24,6 +24,8 @@ set(CMAKE_C_STANDARD 99)
 
 set(GDSTK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/gdstk")
 set(QHULL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/qhull")
+# Header-only (mapbox/earcut.hpp); nothing to compile, just an include path.
+set(EARCUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/earcut")
 
 set(GDSTK_SOURCES
     "${GDSTK_DIR}/src/cell.cpp"
@@ -71,7 +73,8 @@ add_executable(gdstk_wasm bindings.cpp renderer.cpp lyp_util.cpp stroke_font.cpp
 target_include_directories(gdstk_wasm PRIVATE
     "${GDSTK_DIR}/include"
     "${GDSTK_DIR}/external"
-    "${QHULL_DIR}/src")
+    "${QHULL_DIR}/src"
+    "${EARCUT_DIR}/include")
 
 set_source_files_properties(${QHULL_SOURCES} PROPERTIES LANGUAGE C)
 

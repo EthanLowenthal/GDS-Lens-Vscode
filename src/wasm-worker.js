@@ -100,7 +100,8 @@ self.onmessage = (event) => {
         console.log("[GDS worker] layers:", result.layers.length, "instance groups:", result.instanceGroups.length, "labels:", result.totalLabels, "cells:", result.hierarchy.cellCount, "-- posting gdsResult back to main thread");
         const transferList = [];
         for (const layer of result.layers) {
-            transferList.push(layer.outlineVertices.buffer, layer.fillVertices.buffer);
+            transferList.push(layer.outlineVertices.buffer, layer.outlineRanges.buffer,
+                              layer.fillVertices.buffer);
             // Label text (see attach_labels in renderer.cpp). Only the
             // top-level layer entries carry it -- an instanced cell's labels
             // are expanded into world space during the flatten, so the
@@ -111,7 +112,8 @@ self.onmessage = (event) => {
         for (const group of result.instanceGroups) {
             transferList.push(group.instances.buffer);
             for (const layer of group.layers) {
-                transferList.push(layer.outlineVertices.buffer, layer.fillVertices.buffer);
+                transferList.push(layer.outlineVertices.buffer, layer.outlineRanges.buffer,
+                                  layer.fillVertices.buffer);
             }
         }
         // hierarchy (see build_hierarchy in renderer.cpp) is plain objects and
