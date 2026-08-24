@@ -1,8 +1,8 @@
 # Change Log
 
-## [Unreleased]
+## [1.6.3] - 2026-08-24
 
-- **The zoom-in limit is the same in every layout**: 2nm on the scale bar, a 1nm
+- **The zoom-in limit is the same in every layout: 2nm on the scale bar, a 1nm
   grid.** How far in you could go used to be a multiple of the zoom that fits the
   design in the window, which sounds neutral and isn't — it made the deepest view
   a fixed fraction of the design rather than a fixed size.
