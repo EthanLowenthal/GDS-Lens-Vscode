@@ -54,7 +54,14 @@ export default [
         // lil-gui is a minified upstream build; neither is ours to fix, and
         // between them they accounted for well over half of everything this
         // config reported -- which is how a lint run stops being read at all.
-        ignores: ["src/wasm/build/**", "src/vendor/**"],
+        //
+        // dist/ is esbuild's bundle of our own sources, so linting it would
+        // only ever report the same thing twice. .vscode-test-web/ is a whole
+        // VS Code web distribution that `npm run test:web` downloads: flat
+        // config doesn't skip dot-directories on its own, and its multi-megabyte
+        // single-line bundles run the linter out of memory rather than merely
+        // slowing it down.
+        ignores: ["src/wasm/build/**", "src/vendor/**", "dist/**", ".vscode-test-web/**"],
     },
     {
         // The webview's main script. Browser globals, plus everything the
@@ -98,12 +105,29 @@ export default [
         rules,
     },
     {
-        // The extension host, the modules it requires, and the unit tests --
-        // all Node, all CommonJS. `vscode` is a require() away rather than a
-        // global, so nothing extra is needed for it. The tests use node:test
-        // (required explicitly, no injected globals), so there is no test
-        // framework's global set to add either.
-        files: ["src/**/*.cjs", "src/layout-bytes.js", "src/coord-parse.js", "test/**/*.js"],
+        // The extension host and the modules it requires. Pointedly *not*
+        // Node's global set: one bundle serves both the desktop host and the
+        // Web Worker host vscode.dev runs extensions in (see "Running on the
+        // web" in DEVELOPING.md), so the globals here are the ones both
+        // provide -- the web platform's, minus the DOM, plus CommonJS's
+        // module/require. Declaring it this way is what turns a `Buffer`,
+        // `process` or `__dirname` creeping back into the host into a lint
+        // warning rather than a crash that only happens on the web. `vscode`
+        // is a require() away rather than a global, so it needs nothing here.
+        files: ["src/**/*.cjs", "src/layout-bytes.js", "src/coord-parse.js"],
+        languageOptions: {
+            globals: { ...globals.worker, ...globals.commonjs },
+            ecmaVersion: 2022,
+            sourceType: "commonjs",
+        },
+        rules,
+    },
+    {
+        // The unit tests: Node, CommonJS, and free to use Buffer and zlib to
+        // build fixtures even where the code under test can't. They use
+        // node:test (required explicitly, no injected globals), so there is no
+        // test framework's global set to add.
+        files: ["test/**/*.js"],
         languageOptions: {
             globals: { ...globals.node },
             ecmaVersion: 2022,

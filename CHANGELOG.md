@@ -1,6 +1,15 @@
 # Change Log
 
-## [Unreleased]
+## [1.6.4] - 2026-08-24
+
+- **Runs on vscode.dev and github.dev.** GDS Lens is now a web extension, so a
+  layout in a repository opens in the browser with no install and nothing
+  checked out — the viewer, its WebGL rendering and its wasm parser were always
+  browser code, and the extension host around them no longer depends on Node.
+  Two things are necessarily different there: the `.lyp` and marker pickers can
+  only reach files in the workspace you have open, since the browser has no
+  local disk to browse, and auto-reload never fires on a read-only source like
+  github.dev because nothing can change underneath it.
 
 - **Layouts finish loading in about a quarter of the time.** The triangulation
   pass — turning every polygon into the triangles the GPU fills — was most of

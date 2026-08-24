@@ -1,24 +1,29 @@
+// The extension host. Deliberately free of Node builtins -- no fs, path, zlib or
+// Buffer -- so the one source runs both in the desktop extension host and in the
+// Web Worker host vscode.dev and github.dev use, where none of those exist. File
+// access goes through vscode.workspace.fs, paths through vscode.Uri, and the
+// two text/binary conversions Buffer used to do through TextDecoder/btoa below.
+// See "Running on the web" in DEVELOPING.md.
 const vscode = require('vscode');
-const fs = require('fs');
-const path = require('path');
 const { decodeLayoutBytes } = require('./layout-bytes.js');
 const { parseCoordinatePair } = require('./coord-parse.js');
 
 const logger = vscode.window.createOutputChannel("GDSII Debugger");
 
-// globalState key holding the fsPath of the most recently loaded KLayout .lyp,
+// globalState key holding the URI of the most recently loaded KLayout .lyp,
 // so it's re-applied automatically to every GDS viewer opened afterwards
-// (across windows and restarts). We store the path rather than the file text so
-// edits to the .lyp are picked up on reopen, and so the stored state stays tiny.
+// (across windows and restarts). We store the location rather than the file text
+// so edits to the .lyp are picked up on reopen, and so the stored state stays
+// tiny.
 const LAST_LYP_PATH_KEY = 'GDS-Lens.lastLypPath';
 
-// workspaceState key holding a { gdsFsPath: markerFsPath } map. Unlike the
-// global .lyp path above, marker databases are remembered *per GDS file* --
+// workspaceState key holding a { layoutUri: markerUri } map. Unlike the
+// global .lyp above, marker databases are remembered *per GDS file* --
 // DRC results are design-specific, so re-applying design A's markers to
 // design B would be noise.
 const MARKER_PATHS_KEY = 'GDS-Lens.markerPathByGds';
 
-// workspaceState key holding a { gdsFsPath: [view, ...] } map of saved views --
+// workspaceState key holding a { layoutUri: [view, ...] } map of saved views --
 // a name, a camera and which layers were on (see the named-views block in
 // viewer.js). Per layout for the same reason marker databases are: a camera and
 // a layer set only mean anything against the design they were saved from.
@@ -60,6 +65,67 @@ const SETTLE_MS = 400;
 // Give up waiting for quiet after this and read what's there -- a file being
 // appended to continuously would otherwise never reload at all.
 const SETTLE_TIMEOUT_MS = 30000;
+
+// ---- Uri and encoding helpers ----------------------------------------------
+// The Node-free replacements for path.basename, fs.readFileSync('utf8') and
+// Buffer's base64/utf8 conversions.
+
+// Last segment of a URI's path, for messages and for the "filename.lyp ✕" chips.
+// uri.path rather than uri.fsPath: a layout opened from github.dev is a
+// vscode-vfs: URI, which has no filesystem path at all.
+function baseName(uri) {
+    const segments = uri.path.split('/');
+    return segments[segments.length - 1] || uri.path;
+}
+
+function decodeText(bytes) {
+    return new TextDecoder('utf-8').decode(bytes);
+}
+
+async function readText(uri) {
+    return decodeText(await vscode.workspace.fs.readFile(uri));
+}
+
+// UTF-8 text to base64, the job Buffer.from(text).toString('base64') used to do.
+// btoa only takes code points below 256, so the text is encoded to UTF-8 bytes
+// first and fed through String.fromCharCode in chunks -- the whole ~270KB worker
+// bundle spread across one apply() call would overrun the argument limit.
+function toBase64(text) {
+    const bytes = new TextEncoder().encode(text);
+    const CHUNK = 0x8000;
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+    }
+    return btoa(binary);
+}
+
+// Turns a remembered .lyp/marker location back into a URI. Entries written
+// before the web port are filesystem paths rather than URIs, so anything
+// without a scheme is read as one of those. The scheme test wants two or more
+// characters ahead of the colon so a Windows drive letter ("C:\...") isn't
+// mistaken for one.
+function uriFromStored(value) {
+    if (typeof value !== 'string' || !value) return null;
+    return /^[a-zA-Z][a-zA-Z0-9+.-]+:/.test(value)
+        ? vscode.Uri.parse(value)
+        : vscode.Uri.file(value);
+}
+
+// Reads an entry out of one of the per-layout maps. Entries written before the
+// web port were keyed by fsPath, so a file layout falls back to that key.
+function lookupByUri(map, uri) {
+    const current = map[uri.toString()];
+    if (current !== undefined) return current;
+    return uri.scheme === 'file' ? map[uri.fsPath] : undefined;
+}
+
+// The delete half of the same compatibility: drop the old key alongside the new
+// one, so a stale pre-port entry can actually be forgotten.
+function deleteByUri(map, uri) {
+    delete map[uri.toString()];
+    if (uri.scheme === 'file') delete map[uri.fsPath];
+}
 
 function autoReloadEnabled() {
     return vscode.workspace.getConfiguration('GDS-Lens').get('autoReload', false);
@@ -189,21 +255,21 @@ class GdsEditorProvider {
         target.webview.postMessage({ type: 'goToPoint', x: point.x, y: point.y });
     }
 
-    // Reads a .lyp from disk and pushes it to one viewer, tagged with its
-    // basename so the panel can show it as a "filename.lyp ✕" chip. Returns
-    // false (without throwing) if the file can't be read, so callers can drop a
-    // stale remembered path.
-    postLyp(webviewPanel, fsPath) {
+    // Reads a .lyp and pushes it to one viewer, tagged with its basename so the
+    // panel can show it as a "filename.lyp ✕" chip. Returns false (without
+    // throwing) if the file can't be read, so callers can drop a stale
+    // remembered location.
+    async postLyp(webviewPanel, uri) {
         try {
-            const text = fs.readFileSync(fsPath, 'utf8');
+            const text = await readText(uri);
             webviewPanel.webview.postMessage({
                 type: 'lypLoaded',
                 text: text,
-                name: path.basename(fsPath)
+                name: baseName(uri)
             });
             return true;
         } catch (err) {
-            logger.appendLine('>>> Could not read .lyp at ' + fsPath + ': ' + err.message);
+            logger.appendLine('>>> Could not read .lyp at ' + uri.toString() + ': ' + err.message);
             return false;
         }
     }
@@ -214,17 +280,17 @@ class GdsEditorProvider {
     // full-chip results run to hundreds of MB and are routinely stored
     // compressed, and the marker text crosses to the webview as a string, so
     // this is the last place that can deal in bytes. Returns false if
-    // unreadable so callers can drop a stale remembered path.
-    postMarkers(webviewPanel, fsPath) {
+    // unreadable so callers can drop a stale remembered location.
+    async postMarkers(webviewPanel, uri) {
         try {
-            const raw = fs.readFileSync(fsPath);
-            const decoded = decodeLayoutBytes(raw, MAX_MARKER_BYTES);
+            const raw = await vscode.workspace.fs.readFile(uri);
+            const decoded = await decodeLayoutBytes(raw, MAX_MARKER_BYTES);
             if (!decoded.ok) {
-                logger.appendLine('>>> Could not decompress marker file at ' + fsPath + ': ' + decoded.detail);
+                logger.appendLine('>>> Could not decompress marker file at ' + uri.toString() + ': ' + decoded.detail);
                 vscode.window.showErrorMessage(
                     decoded.reason === 'too-large'
-                        ? `${path.basename(fsPath)} expands past the ${formatBytes(MAX_MARKER_BYTES)} marker limit.`
-                        : `Could not decompress ${path.basename(fsPath)} — the file looks gzipped but is corrupt.`
+                        ? `${baseName(uri)} expands past the ${formatBytes(MAX_MARKER_BYTES)} marker limit.`
+                        : `Could not decompress ${baseName(uri)} — the file looks gzipped but is corrupt.`
                 );
                 return false;
             }
@@ -232,15 +298,14 @@ class GdsEditorProvider {
                 logger.appendLine('    gunzipped markers: ' + formatBytes(raw.byteLength) + ' -> ' +
                     formatBytes(decoded.bytes.byteLength));
             }
-            const text = decoded.bytes.toString('utf8');
             webviewPanel.webview.postMessage({
                 type: 'markersLoaded',
-                text: text,
-                name: path.basename(fsPath)
+                text: decodeText(decoded.bytes),
+                name: baseName(uri)
             });
             return true;
         } catch (err) {
-            logger.appendLine('>>> Could not read marker file at ' + fsPath + ': ' + err.message);
+            logger.appendLine('>>> Could not read marker file at ' + uri.toString() + ': ' + err.message);
             return false;
         }
     }
@@ -255,19 +320,19 @@ class GdsEditorProvider {
     // the viewer holds the working copy and sends the entire list back after
     // every change, which makes this side a store rather than a second opinion
     // about what the list is.
-    namedViewsFor(fsPath) {
+    namedViewsFor(uri) {
         const map = this.context.workspaceState.get(NAMED_VIEWS_KEY) || {};
-        const views = map[fsPath];
+        const views = lookupByUri(map, uri);
         return Array.isArray(views) ? views : [];
     }
 
-    async setNamedViews(fsPath, views) {
+    async setNamedViews(uri, views) {
         const map = { ...(this.context.workspaceState.get(NAMED_VIEWS_KEY) || {}) };
         const kept = (Array.isArray(views) ? views : []).slice(0, MAX_NAMED_VIEWS);
         // An empty list drops the entry rather than storing an empty array, so
         // deleting the last saved view leaves nothing behind for this layout.
-        if (kept.length === 0) delete map[fsPath];
-        else map[fsPath] = kept;
+        deleteByUri(map, uri);
+        if (kept.length > 0) map[uri.toString()] = kept;
         await this.context.workspaceState.update(NAMED_VIEWS_KEY, map);
     }
 
@@ -319,29 +384,29 @@ class GdsEditorProvider {
 
         async resolveCustomEditor(document, webviewPanel, _token) {
         try {
-            // 1. Grant permission to execute scripts and access local extensions directories
+            // 1. Grant permission to execute scripts and access the extension's
+            //    own files. extensionUri rather than extensionPath: on the web
+            //    the extension is served over https from the marketplace CDN and
+            //    has no filesystem path to speak of.
             webviewPanel.webview.options = {
                 enableScripts: true,
-                localResourceRoots: [vscode.Uri.file(this.context.extensionPath)]
+                localResourceRoots: [this.context.extensionUri]
             };
 
-            // 2. Fetch the absolute disk file path vectors
-            const htmlPath = path.join(this.context.extensionPath, 'src', 'viewer.html');
-            const jsPath = path.join(this.context.extensionPath, 'src', 'viewer.js');
-            const cellSearchJsPath = path.join(this.context.extensionPath, 'src', 'cell-search.js');
-            const markerParsersJsPath = path.join(this.context.extensionPath, 'src', 'marker-parsers.js');
-            const loadErrorsJsPath = path.join(this.context.extensionPath, 'src', 'load-errors.js');
-            const wasmJsPath = path.join(this.context.extensionPath, 'src', 'wasm', 'build', 'gdstk_wasm.js');
-            const lilGuiJsPath = path.join(this.context.extensionPath, 'src', 'vendor', 'lil-gui.umd.min.js');
-            const workerJsPath = path.join(this.context.extensionPath, 'src', 'wasm-worker.js');
+            // 2. Locate the webview's own assets, relative to the extension.
+            const asset = (...segments) => vscode.Uri.joinPath(this.context.extensionUri, ...segments);
+            const htmlUri = asset('src', 'viewer.html');
+            const loadErrorsJsUri = asset('src', 'load-errors.js');
+            const wasmJsUri = asset('src', 'wasm', 'build', 'gdstk_wasm.js');
+            const workerJsUri = asset('src', 'wasm-worker.js');
 
-            // 3. Convert the native viewer.js/wasm file paths into authenticated Webview URIs
-            const jsWebviewUri = webviewPanel.webview.asWebviewUri(vscode.Uri.file(jsPath));
-            const cellSearchJsWebviewUri = webviewPanel.webview.asWebviewUri(vscode.Uri.file(cellSearchJsPath));
-            const markerParsersJsWebviewUri = webviewPanel.webview.asWebviewUri(vscode.Uri.file(markerParsersJsPath));
-            const loadErrorsJsWebviewUri = webviewPanel.webview.asWebviewUri(vscode.Uri.file(loadErrorsJsPath));
-            const wasmJsWebviewUri = webviewPanel.webview.asWebviewUri(vscode.Uri.file(wasmJsPath));
-            const lilGuiJsWebviewUri = webviewPanel.webview.asWebviewUri(vscode.Uri.file(lilGuiJsPath));
+            // 3. Convert the asset locations into authenticated Webview URIs
+            const jsWebviewUri = webviewPanel.webview.asWebviewUri(asset('src', 'viewer.js'));
+            const cellSearchJsWebviewUri = webviewPanel.webview.asWebviewUri(asset('src', 'cell-search.js'));
+            const markerParsersJsWebviewUri = webviewPanel.webview.asWebviewUri(asset('src', 'marker-parsers.js'));
+            const loadErrorsJsWebviewUri = webviewPanel.webview.asWebviewUri(loadErrorsJsUri);
+            const wasmJsWebviewUri = webviewPanel.webview.asWebviewUri(wasmJsUri);
+            const lilGuiJsWebviewUri = webviewPanel.webview.asWebviewUri(asset('src', 'vendor', 'lil-gui.umd.min.js'));
 
             // The Worker (see viewer.js) needs gdstk_wasm.js's and
             // wasm-worker.js's full text to build its own Blob script from --
@@ -362,15 +427,14 @@ class GdsEditorProvider {
             // with inline images/fonts far larger than this all the time).
             // load-errors.js goes in too: the Worker calls describeLoadFailure
             // when a parse dies, and it can't import from the main thread.
-            const workerBundleBase64 = Buffer.from(
-                fs.readFileSync(wasmJsPath, 'utf8') + '\n' +
-                fs.readFileSync(loadErrorsJsPath, 'utf8') + '\n' +
-                fs.readFileSync(workerJsPath, 'utf8'),
-                'utf8'
-            ).toString('base64');
+            const workerBundleBase64 = toBase64(
+                await readText(wasmJsUri) + '\n' +
+                await readText(loadErrorsJsUri) + '\n' +
+                await readText(workerJsUri)
+            );
 
             // 4. Load the base HTML text and dynamically swap out the standard script references
-            let htmlContent = fs.readFileSync(htmlPath, 'utf8');
+            let htmlContent = await readText(htmlUri);
             htmlContent = htmlContent.replace('src="wasm/build/gdstk_wasm.js"', 'src="' + wasmJsWebviewUri.toString() + '"');
             htmlContent = htmlContent.replace('src="vendor/lil-gui.umd.min.js"', 'src="' + lilGuiJsWebviewUri.toString() + '"');
             htmlContent = htmlContent.replace('src="cell-search.js"', 'src="' + cellSearchJsWebviewUri.toString() + '"');
@@ -403,7 +467,7 @@ class GdsEditorProvider {
                 webviewPanel.webview.postMessage(message);
             };
 
-            logger.appendLine('\n>>> Intercepted layout open call for file: ' + document.uri.fsPath);
+            logger.appendLine('\n>>> Intercepted layout open call for file: ' + document.uri.toString());
 
             // Size+mtime of the bytes currently loaded in the viewer. The
             // watcher compares against this so events that don't reflect a
@@ -434,7 +498,7 @@ class GdsEditorProvider {
                     logger.appendLine('>>> Layout file is not readable (deleted or moved?)');
                     post({
                         type: 'loadError',
-                        message: `${path.basename(document.uri.fsPath)} is no longer on disk.`
+                        message: `${baseName(document.uri)} is no longer on disk.`
                     });
                     return false;
                 }
@@ -460,7 +524,7 @@ class GdsEditorProvider {
                     logger.appendLine('>>> Failed to read layout: ' + err.stack);
                     post({
                         type: 'loadError',
-                        message: `Could not read ${path.basename(document.uri.fsPath)}: ${err.message}`
+                        message: `Could not read ${baseName(document.uri)}: ${err.message}`
                     });
                     vscode.window.showErrorMessage('GDS Lens: could not read layout file: ' + err.message);
                     return false;
@@ -472,9 +536,9 @@ class GdsEditorProvider {
                 // exactly the bytes an uncompressed file would have produced.
                 // Detected by gzip's magic number rather than by the name, so a
                 // compressed layout called ".gds" works too.
-                const decoded = decodeLayoutBytes(fileData, MAX_LAYOUT_BYTES);
+                const decoded = await decodeLayoutBytes(fileData, MAX_LAYOUT_BYTES);
                 if (!decoded.ok) {
-                    const name = path.basename(document.uri.fsPath);
+                    const name = baseName(document.uri);
                     let message;
                     if (decoded.reason === 'too-large') {
                         // storedSize is gzip's own claim about the expanded size
@@ -591,12 +655,17 @@ class GdsEditorProvider {
             // matched in the handler instead of baked into the glob: layout
             // names do contain glob metacharacters ("chip[v2].gds"), and
             // there's no way to escape those in a VS Code glob.
-            const watchedPath = document.uri.fsPath;
+            //
+            // On the web this watches whatever filesystem provider the layout
+            // came from; a provider that doesn't emit events (github.dev's
+            // read-only one, say) just means no change is ever noticed, which
+            // for a read-only source is the right answer anyway.
+            const watchedUri = document.uri.toString();
             const watcher = vscode.workspace.createFileSystemWatcher(
-                new vscode.RelativePattern(vscode.Uri.file(path.dirname(watchedPath)), '*')
+                new vscode.RelativePattern(vscode.Uri.joinPath(document.uri, '..'), '*')
             );
             const onWatchEvent = (uri) => {
-                if (uri.fsPath === watchedPath) onDiskChange();
+                if (uri.toString() === watchedUri) onDiskChange();
             };
             disposables.push(
                 watcher,
@@ -627,7 +696,7 @@ class GdsEditorProvider {
                     return;
                 }
                 if (message.command === 'saveNamedViews') {
-                    await this.setNamedViews(document.uri.fsPath, message.views);
+                    await this.setNamedViews(document.uri, message.views);
                     return;
                 }
                 if (message.command === 'setAutoReload') {
@@ -638,14 +707,18 @@ class GdsEditorProvider {
                     const options = {
                         canSelectMany: false,
                         openLabel: 'Load Layer Properties',
+                        // Opens next to the layout rather than wherever the
+                        // dialog was left. It matters most on the web, where
+                        // there is no local disk to fall back on and the only
+                        // readable files are the ones in the opened workspace.
+                        defaultUri: vscode.Uri.joinPath(document.uri, '..'),
                         filters: { 'KLayout Properties': ['lyp'] }
                     };
                     const fileUri = await vscode.window.showOpenDialog(options);
                     if (fileUri && fileUri[0]) {
-                        const fsPath = fileUri[0].fsPath;
                         // Remember for next time (this and future viewers).
-                        await this.context.globalState.update(LAST_LYP_PATH_KEY, fsPath);
-                        this.postLyp(webviewPanel, fsPath);
+                        await this.context.globalState.update(LAST_LYP_PATH_KEY, fileUri[0].toString());
+                        await this.postLyp(webviewPanel, fileUri[0]);
                     }
                 } else if (message.command === 'unloadLypFile') {
                     // Forget the remembered .lyp so it isn't re-applied next time.
@@ -654,6 +727,7 @@ class GdsEditorProvider {
                     const options = {
                         canSelectMany: false,
                         openLabel: 'Load Marker Database',
+                        defaultUri: vscode.Uri.joinPath(document.uri, '..'),
                         // Content-sniffed in the webview, so the filter is loose:
                         // Calibre ASCII results get named all sorts of things.
                         filters: {
@@ -663,13 +737,15 @@ class GdsEditorProvider {
                     };
                     const fileUri = await vscode.window.showOpenDialog(options);
                     if (fileUri && fileUri[0]) {
-                        const markerPath = fileUri[0].fsPath;
                         // Remember per GDS file (see MARKER_PATHS_KEY).
-                        await this.updateMarkerMap((map) => { map[document.uri.fsPath] = markerPath; });
-                        this.postMarkers(webviewPanel, markerPath);
+                        await this.updateMarkerMap((map) => {
+                            deleteByUri(map, document.uri);
+                            map[document.uri.toString()] = fileUri[0].toString();
+                        });
+                        await this.postMarkers(webviewPanel, fileUri[0]);
                     }
                 } else if (message.command === 'unloadMarkerFile') {
-                    await this.updateMarkerMap((map) => { delete map[document.uri.fsPath]; });
+                    await this.updateMarkerMap((map) => { deleteByUri(map, document.uri); });
                 }
             });
 
@@ -680,9 +756,9 @@ class GdsEditorProvider {
             // viewer.js's 'lypLoaded' handler waits on the wasm module, and the
             // parsed styling persists until the GDS geometry finishes loading
             // and picks it up. If the file has since moved/been deleted, drop
-            // the stale remembered path so it stops trying.
-            const savedLypPath = this.context.globalState.get(LAST_LYP_PATH_KEY);
-            if (savedLypPath && !this.postLyp(webviewPanel, savedLypPath)) {
+            // the stale remembered location so it stops trying.
+            const savedLypUri = uriFromStored(this.context.globalState.get(LAST_LYP_PATH_KEY));
+            if (savedLypUri && !(await this.postLyp(webviewPanel, savedLypUri))) {
                 await this.context.globalState.update(LAST_LYP_PATH_KEY, undefined);
             }
 
@@ -690,14 +766,14 @@ class GdsEditorProvider {
             // (per-GDS, unlike the .lyp above). Same ordering guarantee: the
             // webview parses and holds the markers until geometry arrives.
             const markerMap = this.context.workspaceState.get(MARKER_PATHS_KEY) || {};
-            const savedMarkerPath = markerMap[document.uri.fsPath];
-            if (savedMarkerPath && !this.postMarkers(webviewPanel, savedMarkerPath)) {
-                await this.updateMarkerMap((map) => { delete map[document.uri.fsPath]; });
+            const savedMarkerUri = uriFromStored(lookupByUri(markerMap, document.uri));
+            if (savedMarkerUri && !(await this.postMarkers(webviewPanel, savedMarkerUri))) {
+                await this.updateMarkerMap((map) => { deleteByUri(map, document.uri); });
             }
             // This layout's saved views. Sent whether or not there are any --
             // the viewer's list is whatever arrives here, so an empty one is
             // the message that says "none saved".
-            post({ type: 'namedViews', views: this.namedViewsFor(document.uri.fsPath) });
+            post({ type: 'namedViews', views: this.namedViewsFor(document.uri) });
         } catch (err) {
             logger.appendLine('[FATAL CRASH ERROR] ' + err.stack);
             // Best-effort: if the webview got far enough to render, it's

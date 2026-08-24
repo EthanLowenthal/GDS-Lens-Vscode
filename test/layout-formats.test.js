@@ -214,8 +214,8 @@ test("parses a gzipped layout identically to the same file uncompressed", { skip
     for (const [fixture, expectedFormat] of [["sample_layout.gds", "GDSII"],
                                              ["sample_layout.oas", "OASIS"]]) {
         const plain = fs.readFileSync(path.join(__dirname, "fixtures", fixture));
-        const decodedPlain = decodeLayoutBytes(plain, MAX);
-        const decodedGz = decodeLayoutBytes(zlib.gzipSync(plain), MAX);
+        const decodedPlain = await decodeLayoutBytes(plain, MAX);
+        const decodedGz = await decodeLayoutBytes(zlib.gzipSync(plain), MAX);
 
         assert.strictEqual(decodedPlain.gzipped, false, fixture);
         assert.strictEqual(decodedGz.gzipped, true, fixture);

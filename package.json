@@ -2,7 +2,7 @@
   "name": "GDS-Lens",
   "displayName": "GDS Lens — GDSII & OASIS Layout Viewer",
   "description": "View GDSII and OASIS chip layouts directly in VS Code, with KLayout .lyp colors and DRC/LVS marker browsing",
-  "version": "1.6.3",
+  "version": "1.6.4",
   "icon": "images/logo.png",
   "license": "MIT",
   "categories": [
@@ -43,11 +43,22 @@
   "engines": {
     "vscode": "^1.125.0"
   },
-  "main": "./src/extension.cjs",
+  "main": "./dist/extension.js",
+  "browser": "./dist/extension.js",
+  "capabilities": {
+    "virtualWorkspaces": true,
+    "untrustedWorkspaces": {
+      "supported": true
+    }
+  },
   "publisher": "ethml",
   "scripts": {
     "build:wasm": "emcmake cmake -S src/wasm -B src/wasm/build && cmake --build src/wasm/build",
+    "compile": "esbuild src/extension.cjs --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=browser --target=es2022 --minify",
+    "watch": "npm run compile -- --sourcemap --watch",
+    "vscode:prepublish": "npm run compile",
     "test": "node --test test/*.test.js",
+    "test:web": "vscode-test-web --browserType=chromium --extensionDevelopmentPath=. test/fixtures",
     "lint": "eslint .",
     "package": "npx @vscode/vsce package -o GDS-Lens-$npm_package_version.vsix",
     "publish:vsce": "sh scripts/with-env.sh npx @vscode/vsce publish --packagePath GDS-Lens-$npm_package_version.vsix",
@@ -57,7 +68,9 @@
   "devDependencies": {
     "@types/node": "24.x",
     "@types/vscode": "^1.125.0",
+    "@vscode/test-web": "^0.0.81",
     "@xmldom/xmldom": "^0.9.10",
+    "esbuild": "^0.28.2",
     "eslint": "^10.5.0",
     "globals": "^17.11.0"
   },

@@ -5,14 +5,17 @@ see [`README.md`](README.md).
 
 ## Project layout
 
-- `src/extension.cjs` — the extension host (Node). Opens the layout file
+- `src/extension.cjs` — the extension host. Opens the layout file
   (`.gds` / `.oas` / `.oasis`, optionally gzipped), streams its bytes into the
-  webview, and relays the `.lyp` and marker file pickers.
+  webview, and relays the `.lyp` and marker file pickers. Uses no Node builtins,
+  so the one bundle serves both the desktop host and the Web Worker host —
+  see "Running on the web" below.
 - `src/layout-bytes.js` — gzip expansion for `.gds.gz` and friends, detected by
   gzip's magic number rather than by extension. Deliberately runs in the
   extension host: see "Layout size limits" below for why it can't be the wasm
-  module's job. Standalone (Node builtins only) and `require()`d directly by the
-  unit tests, same as `marker-parsers.js`.
+  module's job. Standalone (no imports, `DecompressionStream` rather than
+  `zlib`) and `require()`d directly by the unit tests, same as
+  `marker-parsers.js`.
 - `src/viewer.html` / `src/viewer.js` — the webview: bootstraps the wasm
   module and wires up `postMessage` from the extension host.
 - `src/marker-parsers.js` — standalone parsers for DRC/LVS marker databases
@@ -68,10 +71,61 @@ This configures and builds `src/wasm/build/gdstk_wasm.js`, which
 changing any `src/wasm/*.cpp` file or the `gdstk`/`third_party/qhull`
 submodules.
 
+The extension host itself is bundled with esbuild into `dist/extension.js`,
+which is what both `main` and `browser` point at:
+
+```sh
+npm run compile      # or `npm run watch` while working on the host
+```
+
+`npm run package` does this for you via `vscode:prepublish`. Nothing under
+`src/` other than the three host-only files is bundled — `viewer.html` and the
+scripts it pulls in are loaded from the extension's own directory at runtime
+and ship as-is.
+
 ## Running
 
 Press `F5` in VS Code to launch an Extension Development Host with the
 extension loaded, then open a `.gds` or `.oas` file.
+
+## Running on the web
+
+The extension is a [web
+extension](https://code.visualstudio.com/api/extension-guides/web-extensions):
+the same bundle runs unchanged on vscode.dev and github.dev, where extensions
+execute in a Web Worker rather than in Node. To try it:
+
+```sh
+npm run test:web     # serves the extension to a local Chromium on vscode.dev
+```
+
+Almost all of the viewer was already portable — the wasm module is built with
+`-sSINGLE_FILE` so the `.wasm` is base64 inside `gdstk_wasm.js` with nothing to
+fetch, and the webview and its parse Worker were always browser code. The
+extension host was the part that wasn't, and it stays portable only by using
+no Node builtins at all:
+
+- **No `fs`/`path`.** File access goes through `vscode.workspace.fs` and
+  locations through `vscode.Uri`. In particular `uri.fsPath` is avoided for
+  anything but backwards compatibility: a layout opened from github.dev is a
+  `vscode-vfs:` URI with no filesystem path behind it. That is also why the
+  remembered `.lyp`/marker locations and the per-layout state maps are keyed by
+  `uri.toString()`, with a fallback read of the old `fsPath` keys so state
+  written before the port survives.
+- **No `zlib`.** `src/layout-bytes.js` expands gzipped layouts with
+  `DecompressionStream`, which makes it async and makes the size cap its own
+  job to enforce.
+- **No `Buffer`.** `TextDecoder` and a chunked `btoa` do the text and base64
+  conversions instead.
+
+`eslint.config.mjs` gives the host files worker globals rather than Node ones,
+so reaching for any of the above is a lint warning rather than a failure that
+only shows up in a browser.
+
+What genuinely differs on the web is the environment, not the code: there is no
+local disk, so the `.lyp` and marker pickers can only reach files in the opened
+virtual workspace, and a read-only filesystem provider emits no change events,
+so auto-reload never fires there.
 
 ## Layout size limits
 
@@ -238,10 +292,12 @@ ship in time. If it has not shipped by ~November 2026, fall back to
 the tree as it stands, so anything it prints is new.
 
 The config is split per environment rather than applied as one block, because
-this tree holds three of them and `no-undef` is only worth having if it knows
+this tree holds four of them and `no-undef` is only worth having if it knows
 which one a file is in — the webview's `<script>` files (browser globals plus
-whatever the tags before them defined), the parse Worker (no DOM), and the
-extension host with the unit tests (CommonJS under Node). Two things it skips:
+whatever the tags before them defined), the parse Worker (no DOM), the
+extension host (worker globals, *not* Node's, so a `Buffer` or `process` that
+would break on the web is caught here) and the unit tests (CommonJS under Node,
+free to use `Buffer` and `zlib` to build fixtures). Two things it skips:
 `src/wasm/build/` (Emscripten's generated output) and `src/vendor/`
 (a minified upstream lil-gui), neither of which is ours to fix.
 

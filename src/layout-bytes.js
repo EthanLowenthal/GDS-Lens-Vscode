@@ -7,16 +7,20 @@
 // is a memory decision. The viewer's entire size budget is the 32-bit wasm heap:
 // the file's bytes and the flattened geometry built from them both have to fit
 // in 4 GB (see DEVELOPING.md), and that heap is the one address space that can
-// least afford a second full copy of the file. Node has no such ceiling, so
-// doing it here spends the compressed copy and zlib's scratch space where they
-// cost nothing, and hands the wasm side a single buffer.
+// least afford a second full copy of the file. The host has no such ceiling, so
+// doing it here spends the compressed copy and the decompressor's scratch space
+// where they cost nothing, and hands the wasm side a single buffer.
 //
-// Standalone, Node builtins only, with a module.exports tail -- the same shape
-// as marker-parsers.js and load-errors.js, so the tests can require() it
-// directly.
+// Built on the platform's DecompressionStream rather than Node's zlib, so the
+// same code runs in the desktop extension host and in the Web Worker extension
+// host vscode.dev uses (see "Running on the web" in DEVELOPING.md). That makes
+// expansion async, which is the one shape change from the zlib version; it also
+// makes the size cap ours to enforce, since there is no `maxOutputLength` to
+// hand off to -- that's what the running total in gunzip() is for.
+//
+// Standalone, no imports, with a module.exports tail -- the same shape as
+// marker-parsers.js and load-errors.js, so the tests can require() it directly.
 "use strict";
-
-const zlib = require("zlib");
 
 // gzip's magic number: RFC 1952's ID1/ID2. Detection is by content rather than
 // by a ".gz" on the name, matching how GDSII vs OASIS is already decided (see
@@ -39,8 +43,9 @@ function looksGzipped(bytes) {
 // Only ever used to word a message. It's stored modulo 2^32, and for a
 // multi-member file it describes the last member alone, so it is a hint about
 // the file rather than a fact about it -- which is exactly why it isn't what
-// enforces the limit below. maxOutputLength does that, by stopping zlib the
-// moment it overruns instead of trusting what the file claims about itself.
+// enforces the limit below. The running total in gunzip() does that, by stopping
+// the moment the output overruns instead of trusting what the file claims about
+// itself.
 //
 // Read by hand rather than with Buffer.readUInt32LE: the caller's bytes come
 // from vscode.workspace.fs.readFile, which yields a plain Uint8Array. The top
@@ -51,6 +56,52 @@ function gzipStoredSize(bytes) {
     const end = bytes.length;
     return bytes[end - 4] + bytes[end - 3] * 0x100 + bytes[end - 2] * 0x10000 +
            bytes[end - 1] * 0x1000000;
+}
+
+// Expands one gzip buffer, refusing to accumulate more than `cap` bytes.
+//
+// The write side is started but deliberately not awaited before reading. A
+// DecompressionStream applies backpressure, so `writer.write()` of a whole
+// layout doesn't settle until the read loop below has drained it -- awaiting it
+// first would deadlock. Its rejection is swallowed because every failure the
+// stream can have (a bad header, a truncated body, corrupt deflate data) also
+// surfaces from `reader.read()`, which is where the throw wants to come from;
+// without the catch, the same error would additionally go unhandled here.
+async function gunzip(bytes, cap) {
+    const stream = new DecompressionStream("gzip");
+    const writer = stream.writable.getWriter();
+    const pump = writer.write(bytes).then(() => writer.close()).catch(() => {});
+
+    const reader = stream.readable.getReader();
+    const chunks = [];
+    let total = 0;
+    for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        // `>` rather than `>=`: a file expanding to exactly the cap still fits.
+        if (total > cap) {
+            await reader.cancel();
+            await pump;
+            const err = new Error(`expands past the ${cap} byte limit`);
+            err.tooLarge = true;
+            throw err;
+        }
+        chunks.push(value);
+    }
+    await pump;
+
+    // A layout that arrived in one chunk is handed straight back rather than
+    // copied into a second buffer of the same size. At these sizes the copy is
+    // the expensive part, not the bookkeeping.
+    if (chunks.length === 1) return chunks[0];
+    const out = new Uint8Array(total);
+    let at = 0;
+    for (const chunk of chunks) {
+        out.set(chunk, at);
+        at += chunk.byteLength;
+    }
+    return out;
 }
 
 // Uncompressed layout bytes, whatever the input was.
@@ -65,21 +116,21 @@ function gzipStoredSize(bytes) {
 // them -- one is about this machine's limits, the other about the file being
 // broken or half-written -- and the prose for both lives with the caller's other
 // messages rather than here.
-function decodeLayoutBytes(bytes, maxBytes) {
+async function decodeLayoutBytes(bytes, maxBytes) {
     if (!looksGzipped(bytes)) return { ok: true, bytes: bytes, gzipped: false, storedSize: null };
 
     const storedSize = gzipStoredSize(bytes);
     try {
-        const options = Number.isFinite(maxBytes) ? { maxOutputLength: maxBytes } : {};
-        return { ok: true, bytes: zlib.gunzipSync(bytes, options), gzipped: true, storedSize: storedSize };
+        const cap = Number.isFinite(maxBytes) ? maxBytes : Infinity;
+        return { ok: true, bytes: await gunzip(bytes, cap), gzipped: true, storedSize: storedSize };
     } catch (err) {
-        // ERR_BUFFER_TOO_LARGE is maxOutputLength being hit -- the one failure
-        // here that's about size rather than about the data. Everything else
-        // (Z_DATA_ERROR on a bad header, Z_BUF_ERROR on a truncated or corrupted
-        // body) means the compressed stream itself can't be read.
+        // The `tooLarge` flag is the cap above being hit -- the one failure here
+        // that's about size rather than about the data. Everything else is the
+        // decompressor refusing the stream itself, which means the compressed
+        // data can't be read at all.
         return {
             ok: false,
-            reason: err && err.code === "ERR_BUFFER_TOO_LARGE" ? "too-large" : "corrupt",
+            reason: err && err.tooLarge ? "too-large" : "corrupt",
             storedSize: storedSize,
             detail: err && err.message ? err.message : String(err)
         };

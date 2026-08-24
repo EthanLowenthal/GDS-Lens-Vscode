@@ -17,6 +17,15 @@ src/wasm/build/cmake_install.cmake
 **/.vscode-test.*
 scripts/**
 .env.publish*
+.vscode-test-web/**
+
+# The extension host's own sources — esbuild bundles these into
+# dist/extension.js (which is what `main`/`browser` point at), so shipping them
+# again would just be dead weight. The rest of src/ stays: viewer.html and the
+# scripts it pulls in are loaded from the extension's own directory at runtime.
+src/extension.cjs
+src/layout-bytes.js
+src/coord-parse.js
 
 # Internal docs — README.md, CHANGELOG.md and LICENCE.md still ship (vsce
 # surfaces those on the listing); DEVELOPING.md is for contributors only.
