@@ -95,6 +95,34 @@
             return window.matchMedia("(prefers-color-scheme: light)").matches;
         },
 
+        // A webview cannot reach its own asset URLs from inside a Worker:
+        // neither importScripts() nor fetch() reaches the resource protocol,
+        // even though the identical URL loads fine as a <script src> tag. So
+        // the extension host inlines the worker's whole script, base64'd, into
+        // #workerBundle and the Worker is built from that instead. The tag
+        // lives in the outer document rather than the viewer's shadow root,
+        // because it is the host's to fill in.
+        createWorker: () => {
+            const inline = document.getElementById("workerBundle");
+            const text = inline ? inline.textContent.trim() : "";
+            if (!text || text.startsWith("{{")) {
+                // Unsubstituted placeholder: atob() on it would throw a decode
+                // error that looks nothing like the missing substitution
+                // behind it.
+                throw new Error("worker bundle was not substituted into the webview HTML");
+            }
+            // atob() yields a "binary string" -- one JS char per raw byte
+            // (0-255), NOT real UTF-16 text. gdstk_wasm.js contains genuine
+            // non-ASCII bytes (its embedded wasm binary), so handing that
+            // string straight to new Blob([...]) would have the constructor
+            // UTF-8-encode it as if it were text, expanding every byte >=128
+            // into a 2-byte sequence and corrupting the wasm binary (surfacing
+            // as a WebAssembly.instantiate() "section was shorter than
+            // expected size" CompileError inside the worker).
+            const bytes = Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
+            return new Worker(URL.createObjectURL(new Blob([bytes], { type: "application/javascript" })));
+        },
+
         requestReload: () => post({ command: "reloadFile" }),
         setAutoReload: (value) => post({ command: "setAutoReload", value }),
         onGotoResult: (result) => post({ command: "gotoResult", ...result }),
