@@ -1,5 +1,31 @@
 # Change Log
 
+## [1.7.0] - 2026-08-25
+
+- **The Output panel no longer takes over when you open a layout.** Opening a
+  file revealed the GDS Lens output channel every time, which pulled focus off
+  the editor you were trying to look at. It still logs everything it did; you
+  now have to ask to see it.
+
+- **The background grid survives a reload.** After the file changed on disk and
+  the viewer re-read it - through the Reload button or auto-reload - the grid
+  went and stayed gone until something else forced a redraw. Loading the old
+  file's geometry out of the GPU also cleared the grid's own drawing state,
+  and the frame that followed was rejected and skipped.
+
+- **Marker file warnings say what they are.** A `.lyrdb` or DRC file the viewer
+  could not read cleanly showed a `⚠ N warnings` row and nothing else; the
+  sentences behind the count were only in a tooltip. The row opens now, one
+  warning to a line, so "a marker may be in the wrong place" is something you
+  read rather than hover for.
+
+- **The viewer is a published package.** Everything that parses and draws a
+  layout is now [`gds-lens`](https://www.npmjs.com/package/gds-lens) on npm,
+  and this extension is one consumer of it rather than the only place it
+  exists. Nothing about using the extension changes. It does mean the viewer
+  can be embedded in a documentation site or an internal tool, and that fixes
+  to it land in both places at once.
+
 ## [1.6.4] - 2026-08-24
 
 - **Runs on vscode.dev and github.dev.** GDS Lens is now a web extension, so a

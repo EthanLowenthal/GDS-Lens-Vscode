@@ -2,7 +2,7 @@
   "name": "GDS-Lens",
   "displayName": "GDS Lens — GDSII & OASIS Layout Viewer",
   "description": "View GDSII and OASIS chip layouts directly in VS Code, with .lyp layer colors and DRC/LVS marker browsing",
-  "version": "1.6.4",
+  "version": "1.7.0",
   "icon": "images/logo.png",
   "license": "MIT",
   "categories": [
@@ -70,7 +70,7 @@
     "@xmldom/xmldom": "^0.9.10",
     "esbuild": "^0.28.2",
     "eslint": "^10.5.0",
-    "gds-lens": "1.0.1",
+    "gds-lens": "1.0.2",
     "globals": "^17.11.0"
   },
   "repository": {
