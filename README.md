@@ -1,4 +1,4 @@
-# GDS Lens — GDSII & OASIS layout viewer for VS Code
+# GDS Lens - GDSII & OASIS layout viewer for VS Code
 
 [![Visual Studio Marketplace](https://vsmarketplacebadges.dev/version-short/ethml.GDS-Lens.svg?style=flat-square&label=Marketplace&color=0f1720)](https://marketplace.visualstudio.com/items?itemName=ethml.GDS-Lens)
 [![Installs](https://vsmarketplacebadges.dev/installs-short/ethml.GDS-Lens.svg?style=flat-square&label=installs&color=0f1720)](https://marketplace.visualstudio.com/items?itemName=ethml.GDS-Lens)
@@ -9,7 +9,7 @@
 (GDSII) and `.oas` / `.oasis` (OASIS) files, gzipped or not: open one and it's
 parsed and rendered in a WebGL2 canvas, with `.lyp` colors, a cell
 hierarchy tree, find-by-name, saved views, a snapping ruler and DRC/LVS marker
-browsing. No install beyond the extension — no the .lyp/.lyrdb tooling, no Python, no server.
+browsing. No install beyond the extension - no the .lyp/.lyrdb tooling, no Python, no server.
 
 ![GDS Lens rendering a GDSII layout](images/example.png)
 
@@ -21,11 +21,11 @@ browsing. No install beyond the extension — no the .lyp/.lyrdb tooling, no Pyt
 ## Features
 
 - **GDSII and OASIS**, including gzipped (`.gds.gz`, `.oas.gz`, `.oasis.gz`).
-- **Full hierarchy** — SREF/AREF, rotation, mirroring and magnification.
+- **Full hierarchy** - SREF/AREF, rotation, mirroring and magnification.
 - **A cell tree** you can click through to frame and outline any cell.
-- **Find by name** — any cell, or any of the layout's own text labels.
-- **Saved views** — name a camera and layer set, and come back to it.
-- **A PDK-scale layer panel** — filter, solo, shape counts, bulk show/hide.
+- **Find by name** - any cell, or any of the layout's own text labels.
+- **Saved views** - name a camera and layer set, and come back to it.
+- **A PDK-scale layer panel** - filter, solo, shape counts, bulk show/hide.
 - **`.lyp` colors**, remembered per layout.
 - **A ruler** with vertex/edge snapping and axis constraint.
 - **DRC/LVS markers** from `.lyrdb` or ASCII DRC results.
@@ -34,7 +34,7 @@ browsing. No install beyond the extension — no the .lyp/.lyrdb tooling, no Pyt
 
 ## Getting started
 
-Open any `.gds`, `.oas`, `.oasis` file — or a gzipped one — and it opens in the
+Open any `.gds`, `.oas`, `.oasis` file - or a gzipped one - and it opens in the
 viewer. Neither gzip nor the layout format is decided by the filename: both are
 read from the file's leading bytes, so a layout with an unexpected extension
 still loads, and so does a `.gds` that turns out to be gzipped.
@@ -60,7 +60,7 @@ tree, starting from its top cell(s).
 
 #### Finding a cell or a label
 
-**Find** — the folded row under the panel's header — searches the two things in a
+**Find** - the folded row under the panel's header - searches the two things in a
 design that have names: its cells, and the layout's own `TEXT` labels, with
 **Cells | Labels** choosing which. It starts closed, since the panel is there to
 browse the tree; `/` opens it and lands in the box from anywhere, opening the
@@ -70,11 +70,11 @@ panel too if that was away.
   puts the tree back with its open branches untouched.
 - **Cells** match by name, exact matches first. Clicking one *opens the tree down
   to it*: the branches above it unfold, the row is selected and framed, and every
-  placement is outlined — the same as having found the row by hand. The query
+  placement is outlined - the same as having found the row by hand. The query
   stays in the box, so clicking back into it brings the list back.
 - **Labels** match by text, including labels on layers you've hidden (the row
   says so). Clicking one pans to it and marks it with a dashed box, leaving the
-  zoom alone — a label is drawn at a fixed size on screen, so there's no extent
+  zoom alone - a label is drawn at a fixed size on screen, so there's no extent
   to frame. Text drawing switches on if it was off, since finding a label and
   showing nothing isn't an answer.
 - **↑ ↓ and Enter** walk the list and take a row; `Esc` clears the query, and
@@ -100,11 +100,11 @@ A collapsed folder for the things you set once:
 | Control | Does |
 | --- | --- |
 | **Infill** | Hatched layer fill on/off |
-| **Text** | The layout's own `TEXT` labels, drawn in their layer's color (off by default — a dense design's labels bury the geometry) |
+| **Text** | The layout's own `TEXT` labels, drawn in their layer's color (off by default - a dense design's labels bury the geometry) |
 | **Merge Overlaps** | Draw each layer as the union of its polygons, without internal edges |
 | **Grid** | Background reference grid, pitched at a round nm/µm/mm step that follows the zoom (on by default) |
 | **Load .lyp File** | Custom layer colors |
-| **Load Marker File** | A DRC/LVS marker database — see below |
+| **Load Marker File** | A DRC/LVS marker database - see below |
 | **Reset View** | Refit the layout to the window |
 
 ### Saved views
@@ -113,7 +113,7 @@ A collapsed folder for the things you set once:
 asks for a name and stores the camera together with which layers were on;
 clicking a saved view puts both back, and the ✕ deletes it.
 
-Views are kept per layout and survive closing the file — so "pad ring", "the
+Views are kept per layout and survive closing the file - so "pad ring", "the
 corner that failed DRC" or "metal only, full chip" are still there next week.
 The render toggles in **Display** are deliberately not part of a view: those are
 how you like layouts drawn, not a place in one.
@@ -123,10 +123,10 @@ how you like layouts drawn, not a place in one.
 **Mode: Pan | Measure** sits at the top of the panel (or press `M`). In
 **Measure**, click two points for the distance, Δx, Δy and angle between them.
 
-- **Snapping** — points land on the nearest polygon vertex or edge within ~12px,
+- **Snapping** - points land on the nearest polygon vertex or edge within ~12px,
   marked by a small square before you click. Hold `Alt` to place a point freely.
 - **`Shift`** constrains the second point to horizontal or vertical.
-- **Rulers stay put** — finished measurements remain on the canvas so several can
+- **Rulers stay put** - finished measurements remain on the canvas so several can
   be compared at once, and they survive leaving Measure mode. A **Rulers: Clear
   *n*** row appears while any are up.
 
@@ -141,12 +141,12 @@ you clicked on the clipboard as `X=…, Y=…`, with the same digits the readout
 showing. It pastes straight back into **Go to Coordinate**, or into a script or
 a message.
 
-**GDSLens: Go to Coordinate** centers the view on a coordinate you paste in —
+**GDSLens: Go to Coordinate** centers the view on a coordinate you paste in -
 microns unless a number carries its own `nm`/`um`/`µm`/`mm`, and the decorations
 DRC reports and messages wrap them in (parentheses, `x=`/`y=`, commas or bare
 spaces) are all accepted. The zoom is left alone. A crosshair marks where you
 landed and fades out after a couple of seconds, so the spot is visible even when
-the point sits off-centre — which it does whenever a coordinate lands near (or
+the point sits off-centre - which it does whenever a coordinate lands near (or
 outside) the edge of the design.
 
 ### DRC/LVS markers
@@ -157,7 +157,7 @@ ASCII results database (detected from the file's content, not its extension).
 - Violations draw as a red overlay above all layers.
 - The **Markers** panel lists each category (rulecheck) with a visibility toggle
   and clickable items that zoom to the violation; `[` / `]` step through them.
-- Categories start hidden — check the rulechecks you want drawn. Clicking an item
+- Categories start hidden - check the rulechecks you want drawn. Clicking an item
   always shows that marker, even if its category is hidden.
 - Also: an overlay opacity slider, and **Hide empty categories**.
 - The marker file is remembered per layout and re-applied when you reopen it;

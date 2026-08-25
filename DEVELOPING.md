@@ -14,6 +14,11 @@ from there as a package.
   streams its bytes into the webview, and relays the `.lyp` and marker file
   pickers. Uses no Node builtins, so the one bundle serves both the desktop
   host and the Web Worker host: see "Running on the web" below.
+- `src/webview-host.js` - the whole of what the viewer knows about VS Code. The
+  library defines a `ViewerHost` interface for the things only an embedder can
+  do (pick a file, prompt for a name, persist views, request a reload) and ships
+  a default implementation for a plain web page; this replaces that one file at
+  build time. See "The host adapter" below.
 - `scripts/copy-webview.mjs` - copies the viewer payload out of the `gds-lens`
   package into `dist/webview/`, which is what the host points the webview at.
   Copying rather than reaching into `node_modules/` through `asWebviewUri`
@@ -30,6 +35,41 @@ webview, is the pair of pure modules that run in the extension host itself:
 DOM-free and wasm-free, which is why they can be required here at all. esbuild
 inlines them into `dist/extension.js` at build time, so `gds-lens` is a
 devDependency: nothing needs it at runtime.
+
+## The host adapter
+
+The viewer is a `<gds-lens>` custom element that never touches its environment
+directly. It asks a host object for anything only an embedder can do, and the
+host drives it back through the surface `connect()` hands over. The library's
+own default host implements that for a plain page (`<input type=file>`,
+`localStorage`, `prompt()`); `src/webview-host.js` implements it for VS Code
+and is copied over the default as `host.js`.
+
+Three parts of it are worth knowing about, because each exists for a reason
+that is not obvious:
+
+- **The pickers are promises over a one-way protocol.** The extension host
+  speaks in messages that do not pair up: a request goes out as one and its
+  answer arrives as a different one, with nothing connecting them. The adapter
+  keeps a resolver per outstanding request. Answers can also arrive
+  *unsolicited* (a `.lyp` remembered from a previous session is pushed on open),
+  so an answer nobody asked for is pushed into the viewer instead.
+- **`createWorker()` inlines the parse Worker's script.** A webview cannot
+  reach its own asset URLs from inside a Worker: neither `importScripts()` nor
+  `fetch()` reaches the resource protocol, even though the identical URL loads
+  fine as a `<script src>` tag. So the extension host base64s the worker's whole
+  script into `#workerBundle` in the outer document and the adapter builds the
+  Worker from that.
+- **`isLightTheme()` maps VS Code's theme classes.** VS Code stamps
+  `vscode-light` / `vscode-dark` / `vscode-high-contrast[-light]` onto `<body>`
+  and rewrites it live. The viewer only wants a boolean, so the mapping lives on
+  this side of the seam.
+
+Two things the extension host does to the payload's HTML at serve time:
+`<script src="name.js">` is rewritten to a webview URI (generically, by pattern
+rather than a hand-written list, so a file added to the payload cannot be
+silently forgotten), and `script-src 'self'` is rewritten to the webview's own
+resource origin.
 
 ## Building
 
@@ -83,7 +123,7 @@ execute in a Web Worker rather than in Node. To try it:
 npm run test:web     # serves the extension to a local Chromium on vscode.dev
 ```
 
-Almost all of the viewer was already portable — the wasm module is built with
+Almost all of the viewer was already portable - the wasm module is built with
 `-sSINGLE_FILE` so the `.wasm` is base64 inside `gdstk_wasm.js` with nothing to
 fetch, and the webview and its parse Worker were always browser code. The
 extension host was the part that wasn't, and it stays portable only by using
@@ -122,7 +162,7 @@ only 2 GB). What that buys, measured against generated stress layouts:
   (gdstk polygon + triangulated vertices + the typed arrays handed to JS), so
   a couple of million top-level polygons is the practical ceiling.
 - **Hierarchy is nearly free.** A cell placed at least `kInstanceThreshold`
-  (8) times anywhere in the design becomes a GPU instance batch — 24 bytes per
+  (8) times anywhere in the design becomes a GPU instance batch - 24 bytes per
   placement instead of a full geometry copy. A hierarchy that flattens to
   115M polygons loads in ~2 GB; the same 4 GB budget is exhausted somewhere
   under 1G.
@@ -146,7 +186,7 @@ explanation, and shown in the viewer's `#loadError` panel. Files larger than
 `MAX_LAYOUT_BYTES` (2 GB) are refused by the extension host before they're
 even read, since the raw bytes alone have to be copied into that same heap.
 
-Note that `#ui` — the engine readout — lives inside the debug panel, which is
+Note that `#ui` - the engine readout - lives inside the debug panel, which is
 closed unless the debug command opened it, so it must never be the only place
 an error is written.
 
@@ -155,11 +195,11 @@ The hierarchy tree (`build_hierarchy` in `renderer.cpp`) is sized by the
 box per cell in the file, regardless of how many times each cell is placed. So
 it costs a fraction of the flatten that follows it, and `kMaxHierarchyCells`
 (50,000) is a guard against pathological generated libraries rather than a
-limit real designs approach — past it the tree is omitted and the panel says
+limit real designs approach - past it the tree is omitted and the panel says
 why, since describing a library that large costs more than the geometry the
 tree exists to navigate.
 
-The one exception is each row's `placements` array — the transform of every
+The one exception is each row's `placements` array - the transform of every
 individual copy, which the viewer outlines one by one when a row is selected.
 That *is* per-placement data, so it carries its own two ceilings:
 `kMaxRowPlacements` (1,024 per row) and `kMaxHierarchyPlacements` (200,000 across
@@ -181,16 +221,16 @@ in both tokens. That file is gitignored and excluded from the packaged `.vsix`
 via `.vscodeignore`; `scripts/with-env.sh` loads it so no token ever lands in
 shell history.
 
-- `VSCE_PAT` — an Azure DevOps personal access token, scoped **Marketplace →
+- `VSCE_PAT` - an Azure DevOps personal access token, scoped **Marketplace →
   Manage**, with organization set to **All accessible organizations**. Azure
   caps PAT lifetime at one year, so this expires and has to be reissued.
 
   > **Deadline: 1 December 2026.** Azure DevOps retires *global* PATs on that
-  > date — and "All accessible organizations" is exactly what makes this one
+  > date - and "All accessible organizations" is exactly what makes this one
   > global, so `VSCE_PAT` publishing stops working then. See
   > [Migrating off `VSCE_PAT`](#migrating-off-vsce_pat) below. `OVSX_PAT` is an
   > Eclipse token and is unaffected.
-- `OVSX_PAT` — from your open-vsx.org profile. Before the first publish you
+- `OVSX_PAT` - from your open-vsx.org profile. Before the first publish you
   must sign the Eclipse Publisher Agreement (with an Eclipse account whose
   email matches your GitHub account) and claim the namespace, which has to
   match `publisher` in `package.json`:
@@ -220,7 +260,7 @@ prebuilt `GDS-Lens-<version>.vsix` rather than repackaging, so the two
 registries get byte-identical artifacts.
 
 Marketplace metadata (`displayName`, `description`, `categories`, `keywords`,
-`galleryBanner`) only takes effect on the next publish — editing it without
+`galleryBanner`) only takes effect on the next publish - editing it without
 shipping a new version changes nothing on the listing.
 
 ### Migrating off `VSCE_PAT`
@@ -228,7 +268,7 @@ shipping a new version changes nothing on the listing.
 Global PATs stop working on 1 December 2026. Two replacements exist; only the
 Marketplace side is affected, so Open VSX keeps using `OVSX_PAT` either way.
 
-**`vsce publish --oidc` — the intended target, but NOT YET RELEASED.** As of
+**`vsce publish --oidc` - the intended target, but NOT YET RELEASED.** As of
 vsce 3.9.2 this flag does not exist (`unknown option '--oidc'`); it is
 documented only on the vsce `main` branch README. Re-check with
 `npx @vscode/vsce publish --help | grep oidc` before planning around it.
@@ -253,7 +293,7 @@ steps:
 ```
 
 It deliberately does *not* fall back to a PAT if the exchange fails. The
-tradeoff is that releases must run in CI — `--oidc` cannot work from a laptop,
+tradeoff is that releases must run in CI - `--oidc` cannot work from a laptop,
 since there is no Actions token to exchange. Note that moving releases into CI
 is not just a matter of swapping the auth flag: the viewer payload comes from
 the `gds-lens` package, so a CI runner needs that package installed from the
@@ -265,7 +305,7 @@ connection, a user-assigned managed identity in Azure with a Reader role,
 federated credentials exchanged between the two, the identity added as a
 Contributor member of the Marketplace publisher, and an Azure Pipelines job that
 mints an Entra token. It assumes an Azure subscription and Azure Pipelines,
-neither of which this project uses — disproportionate for a solo extension.
+neither of which this project uses - disproportionate for a solo extension.
 
 **Plan of record:** stay on `VSCE_PAT` for now, and re-check `--oidc` around
 Q3 2026. Microsoft needs a GitHub Actions story before retiring PATs on
@@ -289,5 +329,5 @@ esbuild's bundle of our own sources plus the viewer payload copied out of
 `gds-lens`: linting it would only ever report the same thing twice, or report
 someone else's code.
 
-A leading underscore marks an argument required by a signature but unused —
-what the VS Code API's providers are handed — and the config ignores those.
+A leading underscore marks an argument required by a signature but unused -
+what the VS Code API's providers are handed - and the config ignores those.

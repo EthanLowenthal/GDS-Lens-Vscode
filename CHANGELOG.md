@@ -4,7 +4,7 @@
 
 - **Runs on vscode.dev and github.dev.** GDS Lens is now a web extension, so a
   layout in a repository opens in the browser with no install and nothing
-  checked out — the viewer, its WebGL rendering and its wasm parser were always
+  checked out - the viewer, its WebGL rendering and its wasm parser were always
   browser code, and the extension host around them no longer depends on Node.
   Two things are necessarily different there: the `.lyp` and marker pickers can
   only reach files in the workspace you have open, since the browser has no
@@ -12,34 +12,34 @@
   github.dev because nothing can change underneath it.
 
 - **Layouts finish loading in about a quarter of the time.** The triangulation
-  pass — turning every polygon into the triangles the GPU fills — was most of
+  pass - turning every polygon into the triangles the GPU fills - was most of
   the wait on a large file, and it was doing quadratic work to get there: after
   clipping each triangle away it restarted its scan from the beginning of the
   polygon and re-tested every remaining vertex. It now clips against a linked
   ring and only ever tests the vertices that could actually block a cut, and
-  recognizes the convex case — which is most of a real layout, rectangles above
-  all — as one that needs no clipping at all. On a 37 MB test layout the pass
+  recognizes the convex case - which is most of a real layout, rectangles above
+  all - as one that needs no clipping at all. On a 37 MB test layout the pass
   went from 987 ms to about 200 ms, and the load as a whole from 1.04 s to
   0.25 s.
 
 - **Big polygons are filled properly instead of approximated.** Anything past a
   point count the old clipper wouldn't attempt got chopped into pieces on a
   1 nm grid first, which moved its edges slightly and left it drawn from parts
-  rather than as itself — and past that limit a polygon contributed nothing at
+  rather than as itself - and past that limit a polygon contributed nothing at
   all to Merge Overlaps' coverage, so a shape you could see would not merge.
   Concave polygons now go to mapbox's earcut, which handles them whole and
   eight times larger than before, so a curve stays the curve it was drawn as.
 
-- **Fewer degenerate triangles.** Duplicated and collinear points — which real
+- **Fewer degenerate triangles.** Duplicated and collinear points - which real
   layouts are full of, and which tools emit deliberately as the self-touching
-  slits that stand in for holes — used to produce zero-area triangles that were
+  slits that stand in for holes - used to produce zero-area triangles that were
   drawn and rasterized to nothing. They're dropped now.
 
 ## [1.6.3] - 2026-08-24
 
 - **The zoom-in limit is the same in every layout: 2nm on the scale bar, a 1nm
   grid.** How far in you could go used to be a multiple of the zoom that fits the
-  design in the window, which sounds neutral and isn't — it made the deepest view
+  design in the window, which sounds neutral and isn't - it made the deepest view
   a fixed fraction of the design rather than a fixed size.
 
 - **Go to Coordinate marks the spot it took you to.** A crosshair drops on the
@@ -49,7 +49,7 @@
   edge lands off-centre.
 
 - **Right-click the layout to copy the coordinate you clicked.** The readout in
-  the corner could tell you where the pointer was but not hand it to anyone —
+  the corner could tell you where the pointer was but not hand it to anyone -
   getting a coordinate into a script, a bug report or a message meant reading it
   off the screen and typing it back in. **Copy coordinate** puts it on the
   clipboard as `X=…, Y=…`. The menu is the canvas's alone: right-clicking
@@ -64,12 +64,12 @@
 
   The box searches the two things in a design that have names, with a
   **Cells | Labels** pair choosing which, because they answer the same question
-  — where is the thing called X — and shouldn't be two places to look.
+  - where is the thing called X - and shouldn't be two places to look.
 
   It's folded away behind one **Find** row and starts closed, for the reason the
   Display folder is closed: the panel exists to browse a hierarchy, and rows of
   chrome above the tree are rows of tree you don't get to see. `/` opens it and
-  lands in the box from anywhere — opening the panel too, if that was away — so
+  lands in the box from anywhere - opening the panel too, if that was away - so
   the fold costs nothing to whoever came to search. Closing it clears the query
   and puts the tree back, rather than leaving a result list up with nothing on
   screen to say where it came from.
@@ -77,14 +77,14 @@
   Choosing a cell **opens the tree down to it**: the branches above it unfold,
   the row is selected and framed and every placement of it is outlined. That's
   the reason results replace the tree instead of filtering its rows the way the
-  Layers panel filters its list — the tree is built lazily, so a cell in a
+  Layers panel filters its list - the tree is built lazily, so a cell in a
   branch nobody has opened has no row to hide or show, and the answer to "where
   is this cell" is a row in context rather than a jumped camera and a tree still
   pointing somewhere else. Clearing the box brings the tree back exactly as it
   was, and the query stays put so clicking back into the box returns the list.
 
   Labels are matched in wasm (a full chip's labels are far too much to hold a
-  second time on the JS side) and include ones on layers you've hidden — the
+  second time on the JS side) and include ones on layers you've hidden - the
   label you're hunting is often on a layer you turned off, and answering "no such
   label" because of that would be wrong, so the row says which ones aren't drawn
   instead. Choosing one pans to it, marks it with a dashed box and leaves the
@@ -94,7 +94,7 @@
   showing nothing is the wrong end to a search.
 
   Both lists cap at 200 rows and say how many matched beyond them, `↑`/`↓` and
-  `Enter` walk them, and a query survives a reload of the same file — a search
+  `Enter` walk them, and a query survives a reload of the same file - a search
   in progress is part of the working context a reload already preserves,
   alongside the camera and the open branches. A design too large for a cell tree
   (past 50,000 cells, where the tree isn't built) has no cell names on this side
@@ -107,7 +107,7 @@
   reload path uses to put the camera and layer set back after a re-read, which
   is the same problem stated differently.
 
-  What a view deliberately doesn't carry is the render toggles — Infill, Text,
+  What a view deliberately doesn't carry is the render toggles - Infill, Text,
   Merge Overlaps, Grid. Those are a preference for how you like layouts drawn
   rather than a place in one (the split the Display folder is built around), and
   a view that quietly flipped them would undo a setting you didn't think you were
@@ -117,7 +117,7 @@
 
 - **`npm run lint` runs, and is clean.** `eslint.config.mjs` imported `globals`,
   which was never a declared dependency, so `npx eslint` died with
-  `ERR_MODULE_NOT_FOUND` — the lint config had, as far as anyone could tell from
+  `ERR_MODULE_NOT_FOUND` - the lint config had, as far as anyone could tell from
   a checkout, never run. With the dependency declared it ran and reported 235
   warnings, well over half of them from Emscripten's generated output and the
   vendored lil-gui build, which are now skipped.
@@ -125,7 +125,7 @@
   The rest was one config describing three environments at once: the webview's
   `<script>` files, the parse Worker and the Node side of the extension all
   sharing a single global list, which is the same as not checking `no-undef` at
-  all — a `document` reference in the extension host passed. It's now one block
+  all - a `document` reference in the extension host passed. It's now one block
   each, including the globals this repo's own `<script>` tags hand each other,
   and the four real findings that surfaced are fixed. `npm run lint` is a script
   rather than something to remember the invocation of.
@@ -138,13 +138,13 @@
 ## [1.6.1] - 2026-08-17
 
 - **ASCII DRC results databases are read the way Some writers write them.** The
-  ASCII database is a counted format — the line under each check name says how
-  many description lines and how many results follow — and the parser had been
+  ASCII database is a counted format - the line under each check name says how
+  many description lines and how many results follow - and the parser had been
   guessing from the shape of the lines instead.
 
   Edge results were the costly one. `e <n> <count>` counts *edges*, each written
   as four numbers on one line, not `<count>` lines of `x y`. So every
-  edge-based check — spacing, enclosure, notch — parsed as malformed and drew
+  edge-based check - spacing, enclosure, notch - parsed as malformed and drew
   nothing at all, while the coordinate lines it rejected were read as new check
   names. A 61,000-marker database came in as 20,116 checks, none of the real
   ones named correctly, and 20,048 warnings.
@@ -153,7 +153,7 @@
   source puts that source in the description lines, unquoted, so each line
   started a bogus check and the closing brace ended up naming one. And
   hierarchical results were skipped outright with a warning that positions may
-  be wrong — when the placement matrix needed to place them correctly is right
+  be wrong - when the placement matrix needed to place them correctly is right
   there in the record.
 
   What the format says now gets read: waived results (`WE<n>`) are marked as
@@ -170,7 +170,7 @@
 ## [1.6.0] - 2026-08-17
 
 - **A quieter control panel.** The panel opened with nine rows of chrome stacked
-  above a collapsed **Layers** folder — which is the one thing anyone opens a
+  above a collapsed **Layers** folder - which is the one thing anyone opens a
   layout to use. The four render toggles (**Infill**, **Text**, **Merge
   Overlaps**, **Grid**), both file loaders (**Load .lyp File**, **Load
   Marker File**) and **Reset View** now live in a single collapsed **Display**
@@ -183,7 +183,7 @@
   the only control there that changes what a click on the canvas does, which
   makes it the one that shouldn't need a folder opened to find.
 
-- **Gzipped layouts open directly** — `.gds.gz`, `.oas.gz`, `.oasis.gz`. Layouts
+- **Gzipped layouts open directly** - `.gds.gz`, `.oas.gz`, `.oasis.gz`. Layouts
   are shipped and archived compressed all the time, and until now opening one
   meant gunzipping it to a scratch file first.
 
@@ -200,7 +200,7 @@
   there would put a second full copy of the file in the one address space that
   can least afford it. Node's heap has no such limit. The 2 GB layout ceiling now
   applies to what a `.gz` expands *to*, which is the size that actually has to
-  fit, and it's enforced as zlib produces output — so a 4 MB archive claiming to
+  fit, and it's enforced as zlib produces output - so a 4 MB archive claiming to
   expand to 40 GB is stopped as it overruns rather than after it has allocated.
   A truncated or corrupt archive says so specifically, since half-written is the
   normal state of a file a generator is still busy compressing.
@@ -212,7 +212,7 @@
     two shapes now gives the gap, not an estimate of it.
 
     The coordinates it returns are exact, not quantized to the pixel that found
-    them — even though nothing about the geometry is kept on the CPU after
+    them - even though nothing about the geometry is kept on the CPU after
     upload. The pick pass's fragment shader carries each fragment's world
     position through as raw bits, so a vertex drawn as a `GL_POINTS` primitive
     reports the very `float32` its vertex buffer holds, and an edge drawn as
@@ -220,9 +220,9 @@
     in range beats any edge: a corner is a more specific answer than the line
     leading to it, and it's what you aim at.
   - **`Shift` constrains to horizontal or vertical**, along whichever axis the
-    ruler already runs further. `Shift` suspends snapping while it's held —
+    ruler already runs further. `Shift` suspends snapping while it's held -
     it's asking for an exact axis, and a snap would pull the point straight back
-    off it — and `Alt` suspends snapping on its own, for points that aren't on
+    off it - and `Alt` suspends snapping on its own, for points that aren't on
     any geometry at all.
   - **An angle in the readout**, alongside the distance and Δx/Δy. Signed and
     measured from +x through the ruler's own direction, so it answers "what
@@ -230,13 +230,13 @@
     one number.
   - **Rulers persist, and stack up.** Every finished measurement stays on the
     canvas instead of being replaced by the next one, because the questions
-    worth asking are comparisons — this gap against that one, the width at both
-    ends of a taper — and a tool that forgets the previous answer makes you hold
+    worth asking are comparisons - this gap against that one, the width at both
+    ends of a taper - and a tool that forgets the previous answer makes you hold
     it in your head. They also survive leaving **Measure** mode: a finished
     measurement is an annotation on the layout, not part of a mode you happen to
     be in, and needing to stay in the mode to keep looking at one was the whole
     reason only a single ruler ever existed. A **Rulers: Clear *n*** row appears
-    in the panel while any are up, and `Esc` now backs out in two steps —
+    in the panel while any are up, and `Esc` now backs out in two steps -
     abandon the measurement being placed, then (on a press with nothing left to
     abandon) clear the finished ones and return to **Pan**.
 - **A layer panel that scales past a demo deck.** A flat checkbox list stops
@@ -244,7 +244,7 @@
   so the panel now has the four things that make a long list usable:
   - **A filter box**, matching a layer's number, datatype, name or group. Rows
     are hidden rather than removed, so filtering is a view of the list and never
-    an edit to it — the visibility behind a hidden row is untouched. Categories
+    an edit to it - the visibility behind a hidden row is untouched. Categories
     with a hit open themselves while you type (the point of typing is to see the
     matches, not to then click nine folders open) and return to how they were
     when the box is cleared.
@@ -253,7 +253,7 @@
     **None**, and one family is hidden without touching the other ninety layers.
   - **Solo** (the **S** on each row): show only that layer. The second click
     restores the visibility set the first one captured, rather than turning
-    everything on — most of a PDK's layer list is layers you had already turned
+    everything on - most of a PDK's layer list is layers you had already turned
     off on purpose, and "show everything" would bury the layout in them.
   - **Shape counts per row**, so it's visible at a glance which layers this
     particular file actually populates and which are near-empty. A layer with no
@@ -261,24 +261,24 @@
     bare `0` would read as empty when it isn't.
 - **A pointer coordinate readout** (`X: … Y: …`), below the scale bar in the
   bottom-right corner. There was a scale bar and a ruler, but nothing answering
-  "where am I?" — the one readout every layout viewer has. It is always in
+  "where am I?" - the one readout every layout viewer has. It is always in
   microns, unlike the scale bar and the ruler: those report one distance at a
   time, where the unit is free to follow the magnitude, while this is a position
   you watch as the pointer moves, and a unit that changes underneath it makes
   two readings taken seconds apart incomparable without noticing the suffix
-  moved. Zoom still sets the precision, just not the unit — the decimals resolve
+  moved. Zoom still sets the precision, just not the unit - the decimals resolve
   a tenth of the background grid's current step, so the digits on screen are the
   ones the grid can distinguish and no more. Both halves of the pair share that
   count, so the decimal point doesn't shift as the pointer crosses zero.
 - **A "GDSLens: Go to Coordinate" command.** Coordinates arrive from outside the
-  viewer constantly — a DRC report, a generator's log, a message from someone
-  else — and there was no way to type one in. The palette entry (offered while a
+  viewer constantly - a DRC report, a generator's log, a message from someone
+  else - and there was no way to type one in. The palette entry (offered while a
   layout is the active editor) centers the view on the pair you paste, leaving
   the zoom alone: the coordinate says where to look, not how much around it you
   want to see, so re-framing would throw away a zoom level you had already
   chosen. Microns unless a number carries its own `nm`/`um`/`µm`/`mm`, and the
-  decorations these coordinates come wrapped in — parentheses, `x=`/`y=` labels,
-  commas or bare whitespace — are accepted, so a pair pasted straight out of a
+  decorations these coordinates come wrapped in - parentheses, `x=`/`y=` labels,
+  commas or bare whitespace - are accepted, so a pair pasted straight out of a
   report works without editing. Anything that can't be read as a pair is refused
   as you type it, and a coordinate outside this layout says so in the status bar,
   rather than silently parking the camera at the nearest edge of the design.
@@ -286,7 +286,7 @@
   event applied one fixed 1.15× step regardless of how far the event said the
   wheel had turned, which is right for a stepped mouse wheel (one event per
   detent) and badly wrong for a trackpad or any smooth-scrolling wheel, which
-  report a stream of small deltas instead — a single two-finger swipe could
+  report a stream of small deltas instead - a single two-finger swipe could
   arrive as 40 events and zoom by more than 100×. The step is now proportional
   to the event's delta, normalized against the conventional 100 pixels (or 3
   lines) per notch, and capped per event so momentum scrolling can't leap
@@ -297,24 +297,24 @@
   design is *made of*; the panel now lists the top cell(s) and, as branches are
   opened, the cells each one places. Clicking a row frames that cell in the
   view and outlines it there, which makes the tree a way to navigate a layout
-  rather than just read it — the fastest way to get from a whole reticle to one
+  rather than just read it - the fastest way to get from a whole reticle to one
   macro.
   - The selected cell is outlined on the canvas, not just framed by the camera.
     Framing alone answers "which shapes are this cell" for exactly as long as
     the view holds still: zoom out to see where the cell sits among its
-    neighbours — the reason you went looking for it — and the answer is gone.
+    neighbours - the reason you went looking for it - and the answer is gone.
     The outlines are world-space boxes, so they stay glued to the geometry
     through any amount of panning and zooming, and `Esc` clears them (the same
     key that drops the ruler). They are only drawn while the panel is up: the
     outline is the tree pointing at the layout, so hiding the tree takes it down
-    too — a dashed rectangle over the design with nothing on screen to explain it
-    is just clutter — and reopening the panel puts it back for whichever row is
+    too - a dashed rectangle over the design with nothing on screen to explain it
+    is just clutter - and reopening the panel puts it back for whichever row is
     still selected.
   - **One outline per placement, not one around all of them.** A row stands for
     a cell as one parent places it, so selecting a cell placed 40 times draws 40
     outlines, each around the copy where it actually sits. The box spanning all
-    40 — which is still what clicking the row frames the camera on, since that's
-    the one view showing the row's whole meaning — mostly encloses *other* cells'
+    40 - which is still what clicking the row frames the camera on, since that's
+    the one view showing the row's whole meaning - mostly encloses *other* cells'
     geometry, so drawing that as the highlight said "the selected cell is
     everything in here", which is exactly the misreading the outline exists to
     prevent. The tree now carries every placement's transform for this (a
@@ -322,14 +322,14 @@
     per-placement data in a structure otherwise sized by the cell count, so it's
     capped twice over: 1,024 placements per row and 200,000 across the library,
     past which a row keeps only its spanning box. Both caps are checked before
-    the offsets of an arrayed reference are expanded at all — a single AREF can
-    hold millions — and a row that hits one falls back to the single box rather
+    the offsets of an arrayed reference are expanded at all - a single AREF can
+    hold millions - and a row that hits one falls back to the single box rather
     than to an arbitrary 1,024 of its copies, since a partial set of outlines
     misrepresents where the cell is in a way one honest envelope doesn't. The
     row's tooltip says which of the two you're looking at.
   - The outline is **dashed**, at a fixed on-screen dash pitch and thickness.
     Drawn solid at a layer's line weight it was indistinguishable from a drawn
-    rectangle — the viewer's own annotation reading as content in the file,
+    rectangle - the viewer's own annotation reading as content in the file,
     which is the one thing a layout viewer must not do. Nothing in a GDSII or
     OASIS file comes out dashed, so the dashes alone mark it as chrome, and
     holding the pitch and thickness in pixels rather than in microns means
@@ -338,7 +338,7 @@
     but 1. A box that would come out smaller than 20px on screen is grown about
     its centre, so a small cell viewed from across the die is still a mark you
     can aim at, and the dashes are clipped to the viewport and laid on a grid
-    anchored to the box — a die-sized cell viewed up close costs the few dozen
+    anchored to the box - a die-sized cell viewed up close costs the few dozen
     dashes actually on screen rather than the millions of pixels of perimeter it
     has, and panning slides them with the geometry instead of along the edge.
     Its blue is the panel's own selection accent, per theme: red belongs to the
@@ -352,7 +352,7 @@
     along with the cell's own shape/label/child counts and its size and centre.
   - Rows are built only for branches that are open. `cells[]` describes each
     cell once, but the tree it spans is that DAG expanded, which for a real
-    chip is orders of magnitude larger than the library it came from — and
+    chip is orders of magnitude larger than the library it came from - and
     nobody reads more of it than they opened.
   - The structure comes out of the same wasm parse as the geometry (a new
     `build_hierarchy` in `renderer.cpp`), before the flatten, since it needs
@@ -360,7 +360,7 @@
     with it: one entry per cell in the file, carrying names, counts, and a box.
   - Each cell's extent is measured bottom-up over a memo, so a cell shared by a
     thousand parents is measured once, and an arrayed reference is sized from
-    its repetition's extreme offsets rather than by walking every copy — an
+    its repetition's extreme offsets rather than by walking every copy - an
     AREF can hold millions. The one deliberate approximation is that a rotated
     cell is framed by the box of its box's mapped corners, which over-estimates
     slightly and is invisible when it's used to aim a camera. Past 50,000 cells
@@ -369,9 +369,9 @@
   - The panel floats over the canvas like the layer panel on the right rather
     than taking width from it, so nothing about the renderer's sizing,
     hit-testing or camera had to learn it exists. It starts collapsed behind a
-    button in the top-left corner (`H` toggles it too) — the viewport belongs
+    button in the top-left corner (`H` toggles it too) - the viewport belongs
     to the layout, and 260px of it is something to ask for rather than be
-    given — and opening it by hand makes that choice stick for the rest of the
+    given - and opening it by hand makes that choice stick for the rest of the
     session. Open branches and the selected cell are keyed by cell-name path,
     so reloading an edited file leaves the tree where it was instead of
     collapsing it to the roots.
@@ -382,7 +382,7 @@
   Pan | Measure pair, with the active mode filled in. A checkbox implied
   measuring was something layered on top of panning, when in fact it replaces
   what a click does. `M` switches modes from the keyboard and `Escape` returns
-  to Pan (clearing the measurement), as the docs already claimed — neither key
+  to Pan (clearing the measurement), as the docs already claimed - neither key
   had actually been wired up.
 - Reloading when the layout changes on disk. A viewer now watches its own
   file, and when a generator script or the .lyp/.lyrdb tooling rewrites it, a header offers a
@@ -393,12 +393,12 @@
   beside it re-reads without asking from then on, storing the
   `GDS-Lens.autoReload` setting (off by default); "GDSLens: Toggle Auto-Reload
   on Change" turns it back off. A reload leaves the design on screen and
-  reports progress in a hairline bar along the top edge — the full-screen
+  reports progress in a hairline bar along the top edge - the full-screen
   loading overlay is for opening a file, and blacking out the viewport would
   undo the point of putting the camera back. Reads wait for the file
   to hold a steady size and mtime before starting, since layout writers rarely
-  produce one clean change event — chunked writes and write-to-temp-then-rename
-  would otherwise be read half-finished — and a reload supersedes any load
+  produce one clean change event - chunked writes and write-to-temp-then-rename
+  would otherwise be read half-finished - and a reload supersedes any load
   still in flight rather than racing it.
 - The debug tools are one panel instead of two. The engine readout (polygon
   and label counts, live visible-polygon stats, GPU memory) floated over the
@@ -417,7 +417,7 @@
   dark. Switching themes re-themes an open viewer immediately; nothing has to
   be reopened, and there is no setting to keep in sync. Both halves of the
   viewer move: the panel, banners, overlays and readouts (which now take every
-  color from one token block), and the canvas itself — the background, the
+  color from one token block), and the canvas itself - the background, the
   ruler and the selected marker's highlight, all of which assumed white-on-
   near-black. Layers with no `.lyp` entry get their generated fallback color
   darkened on a light background, since roughly half of that palette was
@@ -443,8 +443,8 @@
 - Layer outlines render substantially faster, most noticeably on large designs
   and when zoomed out. Each polygon's boundary was drawn as a `GL_LINE_LOOP`,
   with primitive-restart markers separating one polygon from the next. No
-  current GPU API has a line-loop primitive — not D3D11/12, not Vulkan, not
-  Metal — so every backend was emulating the topology and scanning the index
+  current GPU API has a line-loop primitive - not D3D11/12, not Vulkan, not
+  Metal - so every backend was emulating the topology and scanning the index
   stream for restart boundaries. Outlines are now plain `GL_LINES` edge pairs,
   which pass through unconverted everywhere. Output is visually identical; the
   outline index buffers are roughly twice the size in exchange.
@@ -454,8 +454,8 @@
 - The load progress bar advances at a more even rate. Per-layer triangulation
   cost spans orders of magnitude, and layers of similar cost tended to sit
   next to each other, so the bar would sprint through a cheap run and then
-  appear to hang on an expensive one. All layers — static, label-only, and
-  each instance group's unit shape — now run as a single pass against one
+  appear to hang on an expensive one. All layers - static, label-only, and
+  each instance group's unit shape - now run as a single pass against one
   denominator, in an interleaved order. The interleaving is seeded fixed, so a
   given layout still triangulates in the same order every time, and the order
   layers are emitted in is unchanged.
@@ -480,7 +480,7 @@
   a layout saved under an unexpected name still loads as the right format.
 
 - Load failures are now visible. They were being written to the upper-left
-  readout, which is hidden unless the debug-tools command has been run — so a
+  readout, which is hidden unless the debug-tools command has been run - so a
   layout that failed to open left an empty canvas and no explanation. Errors
   now show in a panel of their own, including when the failure happens before
   the renderer starts.
@@ -505,10 +505,10 @@
 - Marker database support: load DRC/LVS violation markers on top of the
   layout via the new "Load Marker File" panel button. One button, format
   auto-detected by content:
-  - .lyrdb report databases (`.lyrdb`) — boxes, polygons (including hole
+  - .lyrdb report databases (`.lyrdb`) - boxes, polygons (including hole
     rings), edges, and edge-pairs; nested categories; text/float-only values
     shown in the item label.
-  - ASCII DRC results databases (any extension) — polygon and edge
+  - ASCII DRC results databases (any extension) - polygon and edge
     clusters, with coordinates scaled by the header's precision.
 - Markers draw as a red highlight overlay above all layers (translucent fill,
   outlines, and end ticks on edge markers so they're findable when zoomed
@@ -516,7 +516,7 @@
 - Marker browser panel: one folder per category (rulecheck) with item counts,
   a per-category visibility toggle, and clickable items that zoom the view to
   the violation (selected marker is re-highlighted in white). `[` / `]` step
-  the selection through visible markers. Categories start hidden — turn on
+  the selection through visible markers. Categories start hidden - turn on
   the rulechecks you want drawn; the selected marker always draws, even from
   a hidden category.
 - Marker overlay opacity slider, and a "Hide empty categories" toggle that
@@ -534,7 +534,7 @@
 - Merge Overlaps mode: draws each layer as the antialiased union of its
   polygons (fill + outer boundary only, no internal edges).
 - Infill is now hidden by default.
-- Layer list: names are no longer cut off after the layer number — labels
+- Layer list: names are no longer cut off after the layer number - labels
   stay on one line, truncate with an ellipsis, and show in full on hover.
 - `.lyp` handling:
   - Entries without usable colors are kept (their names and visibility
