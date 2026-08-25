@@ -40,6 +40,6 @@ await cp(from, to, { recursive: true });
 // views, prompt() for a name. None of that is right inside a webview, where
 // those services belong to the extension host, so ours replaces it. This one
 // substitution is the entire VS Code-specific part of the viewer.
-await copyFile(join(root, "src", "webview-host.js"), join(to, "host.js"));
+await copyFile(join(root, "src", "webview-host.js"), join(to, "gds-lens-host.js"));
 
-console.log(`dist/webview <- ${from} (host.js <- src/webview-host.js)`);
+console.log(`dist/webview <- ${from} (gds-lens-host.js <- src/webview-host.js)`);

@@ -403,12 +403,12 @@ class GdsEditorProvider {
             // Flat by design: the payload is position independent, so this side
             // only needs the directory, not a layout.
             const asset = (name) => vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview', name);
-            const htmlUri = asset('viewer.html');
-            const wasmJsUri = asset('gdstk_wasm.js');
-            const workerJsUri = asset('wasm-worker.js');
+            const htmlUri = asset('gds-lens.html');
+            const wasmJsUri = asset('gds-lens-engine.js');
+            const workerJsUri = asset('gds-lens-worker.js');
 
-            // The Worker (see viewer.js) needs gdstk_wasm.js's and
-            // wasm-worker.js's full text to build its own Blob script from --
+            // The Worker (see viewer.js) needs gds-lens-engine.js's and
+            // gds-lens-worker.js's full text to build its own Blob script from --
             // neither `importScripts(asWebviewUri(...))` from inside the
             // Worker nor `fetch(asWebviewUri(...))` from the main thread can
             // reach VS Code's webview resource protocol (confirmed in
@@ -424,8 +424,8 @@ class GdsEditorProvider {
             // from postMessage's RPC channel that routinely handles content
             // this size without issue (webviews load real HTML documents
             // with inline images/fonts far larger than this all the time).
-            // describeLoadFailure is bundled into wasm-worker.js itself, so
-            // only these two files are needed.
+            // describeLoadFailure is bundled into gds-lens-worker.js itself,
+            // so only these two files are needed.
             const workerBundleBase64 = toBase64(
                 await readText(wasmJsUri) + '\n' +
                 await readText(workerJsUri)
@@ -450,7 +450,17 @@ class GdsEditorProvider {
             htmlContent = htmlContent.replace(
                 "script-src 'self'",
                 'script-src ' + webviewPanel.webview.cspSource);
-            htmlContent = htmlContent.replace('{{workerBundleBase64}}', workerBundleBase64);
+            // The tag is ours to add, not the payload's to carry: the library
+            // serves one HTML file to every host, and only this one needs the
+            // worker inlined. It goes in the outer document (createWorker in
+            // webview-host.js reads it by id) and ahead of every real script,
+            // as type="text/plain" so nothing executes it -- base64 also keeps
+            // a literal "</script>" in the bundle's own text from ending the
+            // tag early.
+            htmlContent = htmlContent.replace(
+                '<body>',
+                '<body>\n    <script type="text/plain" id="workerBundle">' +
+                workerBundleBase64 + '</script>');
 
             webviewPanel.webview.html = htmlContent;
 
