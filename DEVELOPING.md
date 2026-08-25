@@ -87,21 +87,17 @@ npm run compile      # copy dist/webview/ from gds-lens, then bundle the host
 
 ### Why the wasm is embedded
 
-`gds-lens` builds two payloads. Its default, `dist/web/`, ships
-`gdstk_wasm.js` plus a separate `gdstk_wasm.wasm` that the JS fetches - the
-normal way to ship WebAssembly, and the better one: the browser
-stream-compiles the binary while it downloads and caches it apart from the JS.
+`gds-lens` builds two payloads. Its default, `dist/web/`, ships `gdstk_wasm.js`
+plus a separate `gdstk_wasm.wasm` that the JS fetches.
 
-A webview cannot do that. Its resource protocol (`vscode-cdn.net`) serves
+A webview cannot fetch it. Its resource protocol (`vscode-cdn.net`) serves
 `<script src>` tags in the main document fine, but nothing else reaches it:
 `fetch()` against one of those URLs fails from the main thread, and a Worker
-(even a blob one) cannot even `importScripts()` from it. So there is no way to
-pull a separate binary in, from either thread.
+(even a blob one) cannot even `importScripts()` from it.
 
-That is what `dist/inline-wasm/` is for: `-sSINGLE_FILE=1`, binary embedded in
-`gdstk_wasm.js`, nothing to fetch. `scripts/copy-webview.mjs` takes that one.
-It is a few KB larger over the wire and gives up streaming compilation, which
-is the price of running here at all.
+So `scripts/copy-webview.mjs` takes `dist/inline-wasm/` instead:
+`-sSINGLE_FILE=1`, binary embedded in `gdstk_wasm.js`, nothing to fetch. It is
+a few KB larger over the wire and gives up streaming compilation.
 
 The same constraint is why the parse Worker's script is assembled by hand
 rather than loaded: `createWorker` in `src/webview-host.js` reads the

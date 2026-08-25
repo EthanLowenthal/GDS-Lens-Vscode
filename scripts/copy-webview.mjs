@@ -4,9 +4,7 @@
 // gds-lens builds two payloads. This takes inline-wasm, where the binary is
 // embedded in gdstk_wasm.js, rather than the default web one that fetches a
 // separate .wasm: a webview cannot reach its own asset URLs, from a Worker or
-// from the main thread, so there is nothing to fetch it with. That costs
-// streaming compilation and a separate cache entry for the binary, which is
-// the price of running here at all.
+// from the main thread, so there is nothing here to fetch it with.
 //
 // Copying rather than reaching into node_modules/ through asWebviewUri keeps
 // localResourceRoots and .vscodeignore simple: everything the webview loads
