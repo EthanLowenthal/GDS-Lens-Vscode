@@ -53,11 +53,11 @@
   },
   "publisher": "ethml",
   "scripts": {
-    "build:wasm": "emcmake cmake -S src/wasm -B src/wasm/build && cmake --build src/wasm/build",
-    "compile": "esbuild src/extension.cjs --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=browser --target=es2022 --minify",
-    "watch": "npm run compile -- --sourcemap --watch",
+    "build:webview": "node scripts/copy-webview.mjs",
+    "bundle": "esbuild src/extension.cjs --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=browser --target=es2022 --minify",
+    "compile": "npm run build:webview && npm run bundle",
+    "watch": "npm run build:webview && npm run bundle -- --sourcemap --watch",
     "vscode:prepublish": "npm run compile",
-    "test": "node --test test/*.test.js",
     "test:web": "vscode-test-web --browserType=chromium --extensionDevelopmentPath=. test/fixtures",
     "lint": "eslint .",
     "package": "npx @vscode/vsce package -o GDS-Lens-$npm_package_version.vsix",
@@ -72,6 +72,7 @@
     "@xmldom/xmldom": "^0.9.10",
     "esbuild": "^0.28.2",
     "eslint": "^10.5.0",
+    "gds-lens": "file:../GDS-Lens",
     "globals": "^17.11.0"
   },
   "repository": {

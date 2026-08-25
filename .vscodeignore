@@ -1,32 +1,29 @@
 .vscode/**
 .vscode-test/**
+.vscode-test-web/**
 test/**
-third_party/**
-src/wasm/**/*.cpp
-src/wasm/**/*.hpp
-src/wasm/CMakeLists.txt
-src/wasm/build/CMakeFiles/**
-src/wasm/build/CMakeCache.txt
-src/wasm/build/Makefile
-src/wasm/build/cmake_install.cmake
 .gitignore
-.gitmodules
 **/jsconfig.json
 **/*.map
 **/eslint.config.mjs
 **/.vscode-test.*
 scripts/**
 .env.publish*
-.vscode-test-web/**
 
-# The extension host's own sources — esbuild bundles these into
-# dist/extension.js (which is what `main`/`browser` point at), so shipping them
-# again would just be dead weight. The rest of src/ stays: viewer.html and the
-# scripts it pulls in are loaded from the extension's own directory at runtime.
-src/extension.cjs
-src/layout-bytes.js
-src/coord-parse.js
+# All of src/ is build input now, not runtime. esbuild bundles extension.cjs
+# into dist/extension.js (what main/browser point at), and everything the
+# webview loads is copied into dist/webview/ from the gds-lens package by
+# scripts/copy-webview.mjs. Nothing under src/ is read at runtime any more.
+src/**
 
-# Internal docs — README.md, CHANGELOG.md and LICENCE.md still ship (vsce
-# surfaces those on the listing); DEVELOPING.md is for contributors only.
+# gds-lens is a production dependency, so vsce would otherwise pack the whole
+# package (C++ sources, submodules, its own node_modules) into the .vsix. The
+# only part the extension needs is dist/webview/, and that is already copied
+# into our own dist/ at build time.
+node_modules/**
+
+# Internal docs. README.md, CHANGELOG.md, LICENCE.md and
+# THIRD-PARTY-LICENSES.md still ship: vsce surfaces the first three on the
+# listing, and the last is required by Qhull's licence, which grants no
+# exemption for binary-only distribution of the wasm that links it.
 DEVELOPING.md

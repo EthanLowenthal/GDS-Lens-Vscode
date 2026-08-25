@@ -5,8 +5,8 @@
 // two text/binary conversions Buffer used to do through TextDecoder/btoa below.
 // See "Running on the web" in DEVELOPING.md.
 const vscode = require('vscode');
-const { decodeLayoutBytes } = require('./layout-bytes.js');
-const { parseCoordinatePair } = require('./coord-parse.js');
+const { decodeLayoutBytes } = require('gds-lens/layout-bytes');
+const { parseCoordinatePair } = require('gds-lens/coord-parse');
 
 const logger = vscode.window.createOutputChannel("GDSII Debugger");
 
@@ -394,19 +394,23 @@ class GdsEditorProvider {
             };
 
             // 2. Locate the webview's own assets, relative to the extension.
-            const asset = (...segments) => vscode.Uri.joinPath(this.context.extensionUri, ...segments);
-            const htmlUri = asset('src', 'viewer.html');
-            const loadErrorsJsUri = asset('src', 'load-errors.js');
-            const wasmJsUri = asset('src', 'wasm', 'build', 'gdstk_wasm.js');
-            const workerJsUri = asset('src', 'wasm-worker.js');
+            // Everything the webview loads comes from the gds-lens package,
+            // copied into dist/webview at build time by scripts/copy-webview.mjs.
+            // Flat by design: the payload is position independent, so this side
+            // only needs the directory, not a layout.
+            const asset = (name) => vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview', name);
+            const htmlUri = asset('viewer.html');
+            const loadErrorsJsUri = asset('load-errors.js');
+            const wasmJsUri = asset('gdstk_wasm.js');
+            const workerJsUri = asset('wasm-worker.js');
 
             // 3. Convert the asset locations into authenticated Webview URIs
-            const jsWebviewUri = webviewPanel.webview.asWebviewUri(asset('src', 'viewer.js'));
-            const cellSearchJsWebviewUri = webviewPanel.webview.asWebviewUri(asset('src', 'cell-search.js'));
-            const markerParsersJsWebviewUri = webviewPanel.webview.asWebviewUri(asset('src', 'marker-parsers.js'));
+            const jsWebviewUri = webviewPanel.webview.asWebviewUri(asset('viewer.js'));
+            const cellSearchJsWebviewUri = webviewPanel.webview.asWebviewUri(asset('cell-search.js'));
+            const markerParsersJsWebviewUri = webviewPanel.webview.asWebviewUri(asset('marker-parsers.js'));
             const loadErrorsJsWebviewUri = webviewPanel.webview.asWebviewUri(loadErrorsJsUri);
             const wasmJsWebviewUri = webviewPanel.webview.asWebviewUri(wasmJsUri);
-            const lilGuiJsWebviewUri = webviewPanel.webview.asWebviewUri(asset('src', 'vendor', 'lil-gui.umd.min.js'));
+            const lilGuiJsWebviewUri = webviewPanel.webview.asWebviewUri(asset('lil-gui.umd.min.js'));
 
             // The Worker (see viewer.js) needs gdstk_wasm.js's and
             // wasm-worker.js's full text to build its own Blob script from --
@@ -435,8 +439,8 @@ class GdsEditorProvider {
 
             // 4. Load the base HTML text and dynamically swap out the standard script references
             let htmlContent = await readText(htmlUri);
-            htmlContent = htmlContent.replace('src="wasm/build/gdstk_wasm.js"', 'src="' + wasmJsWebviewUri.toString() + '"');
-            htmlContent = htmlContent.replace('src="vendor/lil-gui.umd.min.js"', 'src="' + lilGuiJsWebviewUri.toString() + '"');
+            htmlContent = htmlContent.replace('src="gdstk_wasm.js"', 'src="' + wasmJsWebviewUri.toString() + '"');
+            htmlContent = htmlContent.replace('src="lil-gui.umd.min.js"', 'src="' + lilGuiJsWebviewUri.toString() + '"');
             htmlContent = htmlContent.replace('src="cell-search.js"', 'src="' + cellSearchJsWebviewUri.toString() + '"');
             htmlContent = htmlContent.replace('src="marker-parsers.js"', 'src="' + markerParsersJsWebviewUri.toString() + '"');
             htmlContent = htmlContent.replace('src="load-errors.js"', 'src="' + loadErrorsJsWebviewUri.toString() + '"');

@@ -5,83 +5,67 @@ see [`README.md`](README.md).
 
 ## Project layout
 
-- `src/extension.cjs` — the extension host. Opens the layout file
-  (`.gds` / `.oas` / `.oasis`, optionally gzipped), streams its bytes into the
-  webview, and relays the `.lyp` and marker file pickers. Uses no Node builtins,
-  so the one bundle serves both the desktop host and the Web Worker host —
-  see "Running on the web" below.
-- `src/layout-bytes.js` — gzip expansion for `.gds.gz` and friends, detected by
-  gzip's magic number rather than by extension. Deliberately runs in the
-  extension host: see "Layout size limits" below for why it can't be the wasm
-  module's job. Standalone (no imports, `DecompressionStream` rather than
-  `zlib`) and `require()`d directly by the unit tests, same as
-  `marker-parsers.js`.
-- `src/viewer.html` / `src/viewer.js` — the webview: bootstraps the wasm
-  module and wires up `postMessage` from the extension host.
-- `src/marker-parsers.js` — standalone parsers for DRC/LVS marker databases
-  (KLayout `.lyrdb`, Calibre DRC ASCII); loaded in the webview via a
-  `<script>` tag and `require()`d directly by the unit tests.
-- `src/cell-search.js` — the two pure functions behind the hierarchy panel's
-  find box: ranking the cells a typed name matches, and the depth-first walk
-  that finds which branch the tree has to open to show one. Standalone for the
-  same reason `marker-parsers.js` is — a `<script>` tag in the webview, and
-  `require()`d directly by the unit tests.
-- `src/coord-parse.js` — reads an `x, y` pair out of pasted text (the units and
-  decorations real DRC reports print). Standalone for the same reason
-  `marker-parsers.js` is: the "Go to Coordinate" command validates the input box
-  with it in the extension host, and the unit tests `require()` it directly.
-- `src/wasm/` — C++ source compiled with Emscripten into
-  `src/wasm/build/gdstk_wasm.js`, which does GDSII/OASIS parsing and WebGL
-  rendering. `renderer.cpp` holds the renderer proper (GL state, camera,
-  input, layer upload, the embind API); `bindings.cpp` exposes the parse path
-  on its own for non-graphical testing. The pieces that depend on none of the
-  renderer's state sit beside them: `shaders.hpp` (the GLSL sources),
-  `stroke_font.{hpp,cpp}` (the vector font labels are drawn with),
-  `lyp_util.{hpp,cpp}` (the string/color primitives the `.lyp` reader uses)
-  and `gds_common.hpp` (shared with `bindings.cpp`). Which of gdstk's two
-  readers runs is decided by sniffing the file header in `gds_common.hpp`, so
-  no caller has to know the format. See `docs/rendering-rewrite.md` for the
-  design history of this C++/WASM architecture.
-- `third_party/gdstk`, `third_party/qhull` — git submodules the wasm build
-  links against.
-- `third_party/earcut` — git submodule, header-only (`mapbox/earcut.hpp`).
-  Nothing to compile; the build only adds its include path. `triangulate()` in
-  `renderer.cpp` hands it every concave polygon, and specializes
-  `mapbox::util::nth<>` so it reads gdstk's `Vec2` in place.
-- `test/` — plain-Node tests (`npm test`): marker-parser and gzip unit tests plus
-  headless tests that eval the built wasm bundle in Node (skipped when
-  `src/wasm/build/gdstk_wasm.js` hasn't been built) covering marker state and
-  the GDSII/OASIS readers. `test/fixtures/sample_layout.{gds,oas}` are the
-  same KLayout-built design written in both formats.
+This repo is the VS Code shell only. Everything that parses and draws a layout
+lives in [gds-lens](https://github.com/EthanLowenthal/GDS-Lens) and is consumed
+from there as a package.
+
+- `src/extension.cjs` - the extension host, and the only source file left here.
+  Opens the layout file (`.gds` / `.oas` / `.oasis`, optionally gzipped),
+  streams its bytes into the webview, and relays the `.lyp` and marker file
+  pickers. Uses no Node builtins, so the one bundle serves both the desktop
+  host and the Web Worker host: see "Running on the web" below.
+- `scripts/copy-webview.mjs` - copies the viewer payload out of the `gds-lens`
+  package into `dist/webview/`, which is what the host points the webview at.
+  Copying rather than reaching into `node_modules/` through `asWebviewUri`
+  keeps `localResourceRoots` and `.vscodeignore` simple, and keeps
+  `node_modules` out of the `.vsix` entirely.
+- `test/fixtures/` - sample layouts and marker databases, kept here for
+  `npm run test:web`. The unit tests moved to the library with the code they
+  cover.
+
+What the host still imports directly from the library, rather than through the
+webview, is the pair of pure modules that run in the extension host itself:
+`gds-lens/layout-bytes` (gzip expansion, see "Layout size limits" below) and
+`gds-lens/coord-parse` (reading an `x, y` pair out of pasted text). Both are
+DOM-free and wasm-free, which is why they can be required here at all. esbuild
+inlines them into `dist/extension.js` at build time, so `gds-lens` is a
+devDependency: nothing needs it at runtime.
 
 ## Building
 
-GDS parsing and WebGL rendering run in a C++/WebAssembly module (`src/wasm/`,
-built against the bundled `gdstk` submodule). Building it requires the
-[Emscripten SDK](https://emscripten.org/docs/getting_started/downloads.html)
-(`emcc`/`emcmake` on `PATH`). After installing the SDK and initializing
-submodules (`git submodule update --init --recursive`):
+There is no Emscripten dependency here any more. The wasm module is built in
+the library repo and arrives prebuilt.
 
 ```sh
-npm run build:wasm
+npm install
+npm run compile      # copy dist/webview/ from gds-lens, then bundle the host
 ```
 
-This configures and builds `src/wasm/build/gdstk_wasm.js`, which
-`src/extension.cjs` loads into the webview at runtime. Re-run it after
-changing any `src/wasm/*.cpp` file or the `gdstk`/`third_party/qhull`
-submodules.
+`npm run package` does this for you via `vscode:prepublish`.
 
-The extension host itself is bundled with esbuild into `dist/extension.js`,
-which is what both `main` and `browser` point at:
+## Working on the library at the same time
+
+`gds-lens` is a `file:../GDS-Lens` dependency, so npm symlinks it and edits
+show up without reinstalling. The inner loop is two watchers, one per repo:
 
 ```sh
-npm run compile      # or `npm run watch` while working on the host
+# terminal 1, in ../GDS-Lens
+npm run watch        # rebuilds its dist/webview on every source edit
+
+# terminal 2, here
+npm run watch        # re-copies dist/webview, then esbuild --watch on the host
 ```
 
-`npm run package` does this for you via `vscode:prepublish`. Nothing under
-`src/` other than the three host-only files is bundled — `viewer.html` and the
-scripts it pulls in are loaded from the extension's own directory at runtime
-and ship as-is.
+Then reload the Extension Development Host window to pick up webview changes.
+
+Two things this loop deliberately does not cover. Changing any `src/wasm/*.cpp`
+in the library means re-running `npm run build:wasm` there, which is emcc and
+far too slow to trigger on keystrokes. And the extension's own `npm run watch`
+copies `dist/webview/` once at startup rather than watching it, so a library
+edit needs `npm run build:webview` here (or a restart) to cross over.
+
+Before releasing, check against the published package rather than the local
+path, so a broken publish fails here rather than on the Marketplace.
 
 ## Running
 
@@ -112,7 +96,7 @@ no Node builtins at all:
   remembered `.lyp`/marker locations and the per-layout state maps are keyed by
   `uri.toString()`, with a fallback read of the old `fsPath` keys so state
   written before the port survives.
-- **No `zlib`.** `src/layout-bytes.js` expands gzipped layouts with
+- **No `zlib`.** `gds-lens/layout-bytes` expands gzipped layouts with
   `DecompressionStream`, which makes it async and makes the size cap its own
   job to enforce.
 - **No `Buffer`.** `TextDecoder` and a chunked `btoa` do the text and base64
@@ -131,7 +115,7 @@ so auto-reload never fires there.
 
 Parsing, flattening and triangulating all happen inside a 32-bit WebAssembly
 module, so everything has to fit in one 4 GB address space
-(`-sMAXIMUM_MEMORY` in `src/wasm/CMakeLists.txt` — Emscripten's default is
+(`-sMAXIMUM_MEMORY` in the library's `src/wasm/CMakeLists.txt`, Emscripten's default being
 only 2 GB). What that buys, measured against generated stress layouts:
 
 - **Flat geometry is the expensive case.** ~1 KB per polygon end to end
@@ -144,17 +128,19 @@ only 2 GB). What that buys, measured against generated stress layouts:
   under 1G.
 
 A gzipped layout is expanded before any of this, in the extension host
-(`src/layout-bytes.js`), and the ceilings above apply to what it expands *to* —
+(`gds-lens/layout-bytes`), and the ceilings above apply to what it expands *to*,
 which is also what `MAX_LAYOUT_BYTES` is checked against for a `.gz`, rather
 than its size on disk. Expanding it in Node rather than inside the wasm module
 is the whole point: the module would have to hold the compressed bytes and the
 expanded bytes at once, in the one 4 GB address space that already has to fit
-the flattened geometry, whereas Node's heap has neither constraint. `zlib`'s
-`maxOutputLength` is what enforces the cap, so a small archive claiming to
-expand to 40 GB is stopped as it overruns rather than after it has allocated.
+the flattened geometry, whereas the host's heap has neither constraint.
+`DecompressionStream` is what expands it (not Node's `zlib`, which the web
+extension host does not have), so the cap is enforced by counting bytes as
+they arrive: a small archive claiming to expand to 40 GB is stopped as it
+overruns rather than after it has allocated.
 
 Past that the module aborts. The abort is a JS throw, so it's caught in
-`wasm-worker.js`, run through `describeLoadFailure` (`src/load-errors.js`) to
+the library's `wasm-worker.js`, run through `describeLoadFailure` to
 turn engine strings like `memory access out of bounds` / `Aborted()` into an
 explanation, and shown in the viewer's `#loadError` panel. Files larger than
 `MAX_LAYOUT_BYTES` (2 GB) are refused by the extension host before they're
@@ -219,9 +205,10 @@ shell history.
 
 ### Releasing
 
-Bump `version` in `package.json`, update `CHANGELOG.md`, rebuild the wasm
-(`npm run build:wasm` — `src/wasm/build/` is gitignored, so the `.vsix` is
-packaged from whatever is on your disk and a stale build ships silently), then:
+Bump `version` in `package.json`, update `CHANGELOG.md`, make sure the
+`gds-lens` build you are packaging against is current (`npm run compile` copies
+whatever is in that package's `dist/webview/`, so a stale library build ships
+silently), then:
 
 ```sh
 npm run package       # -> GDS-Lens-<version>.vsix
@@ -268,9 +255,9 @@ steps:
 It deliberately does *not* fall back to a PAT if the exchange fails. The
 tradeoff is that releases must run in CI — `--oidc` cannot work from a laptop,
 since there is no Actions token to exchange. Note that moving releases into CI
-is not just a matter of swapping the auth flag: `src/wasm/build/` is gitignored,
-so a CI runner has no bundle to package and would need the Emscripten SDK
-installed to build one.
+is not just a matter of swapping the auth flag: the viewer payload comes from
+the `gds-lens` package, so a CI runner needs that package installed from the
+registry rather than from the local `file:` path used in development.
 
 **`vsce publish --azure-credential`.** Available today, and the only documented
 replacement. Entra ID via workload identity federation: an Azure DevOps service
@@ -292,14 +279,15 @@ ship in time. If it has not shipped by ~November 2026, fall back to
 the tree as it stands, so anything it prints is new.
 
 The config is split per environment rather than applied as one block, because
-this tree holds four of them and `no-undef` is only worth having if it knows
-which one a file is in — the webview's `<script>` files (browser globals plus
-whatever the tags before them defined), the parse Worker (no DOM), the
-extension host (worker globals, *not* Node's, so a `Buffer` or `process` that
-would break on the web is caught here) and the unit tests (CommonJS under Node,
-free to use `Buffer` and `zlib` to build fixtures). Two things it skips:
-`src/wasm/build/` (Emscripten's generated output) and `src/vendor/`
-(a minified upstream lil-gui), neither of which is ours to fix.
+`no-undef` is only worth having if it knows which one a file is in. Two remain
+here now that the viewer has moved out: the extension host (worker globals,
+*not* Node's, so a `Buffer` or `process` that would break on the web is caught
+here) and the build scripts under `scripts/` (real Node, ESM, never shipped).
+The webview, Worker and parser blocks live in the library's own config. It
+skips `dist/`, which is
+esbuild's bundle of our own sources plus the viewer payload copied out of
+`gds-lens`: linting it would only ever report the same thing twice, or report
+someone else's code.
 
 A leading underscore marks an argument required by a signature but unused —
 what the VS Code API's providers are handed — and the config ignores those.
