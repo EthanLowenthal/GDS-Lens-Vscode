@@ -445,7 +445,12 @@ class GdsEditorProvider {
             htmlContent = htmlContent.replace('src="marker-parsers.js"', 'src="' + markerParsersJsWebviewUri.toString() + '"');
             htmlContent = htmlContent.replace('src="load-errors.js"', 'src="' + loadErrorsJsWebviewUri.toString() + '"');
             htmlContent = htmlContent.replace('src="viewer.js"', 'src="' + jsWebviewUri.toString() + '"');
-            htmlContent = htmlContent.replace('{{cspSource}}', webviewPanel.webview.cspSource);
+            // The payload ships a CSP valid for an ordinary page ('self');
+            // inside a webview the assets come from VS Code's own resource
+            // origin instead, which is what cspSource names.
+            htmlContent = htmlContent.replace(
+                "script-src 'self'",
+                'script-src ' + webviewPanel.webview.cspSource);
             htmlContent = htmlContent.replace('{{workerBundleBase64}}', workerBundleBase64);
 
             webviewPanel.webview.html = htmlContent;

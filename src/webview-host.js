@@ -79,6 +79,22 @@
             post({ command: "promptViewName", names });
         }),
 
+        // VS Code stamps the active theme kind onto <body> as vscode-light /
+        // vscode-dark / vscode-high-contrast[-light] and rewrites it live when
+        // the user switches themes. That is a better answer than the OS
+        // preference the viewer would otherwise fall back to, so the mapping
+        // from those class names to a boolean lives here, on the VS Code side
+        // of the seam. The viewer's own MutationObserver on <body> picks up
+        // the switch, so there is nothing to notify.
+        isLightTheme: () => {
+            const kinds = document.body.classList;
+            // High-contrast light carries both vscode-high-contrast and
+            // vscode-high-contrast-light, so the light check comes first.
+            if (kinds.contains("vscode-high-contrast-light") || kinds.contains("vscode-light")) return true;
+            if (kinds.contains("vscode-high-contrast") || kinds.contains("vscode-dark")) return false;
+            return window.matchMedia("(prefers-color-scheme: light)").matches;
+        },
+
         requestReload: () => post({ command: "reloadFile" }),
         setAutoReload: (value) => post({ command: "setAutoReload", value }),
         onGotoResult: (result) => post({ command: "gotoResult", ...result }),
