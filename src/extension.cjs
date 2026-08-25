@@ -404,7 +404,6 @@ class GdsEditorProvider {
             // only needs the directory, not a layout.
             const asset = (name) => vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview', name);
             const htmlUri = asset('viewer.html');
-            const loadErrorsJsUri = asset('load-errors.js');
             const wasmJsUri = asset('gdstk_wasm.js');
             const workerJsUri = asset('wasm-worker.js');
 
@@ -425,11 +424,10 @@ class GdsEditorProvider {
             // from postMessage's RPC channel that routinely handles content
             // this size without issue (webviews load real HTML documents
             // with inline images/fonts far larger than this all the time).
-            // load-errors.js goes in too: the Worker calls describeLoadFailure
-            // when a parse dies, and it can't import from the main thread.
+            // describeLoadFailure is bundled into wasm-worker.js itself, so
+            // only these two files are needed.
             const workerBundleBase64 = toBase64(
                 await readText(wasmJsUri) + '\n' +
-                await readText(loadErrorsJsUri) + '\n' +
                 await readText(workerJsUri)
             );
 
