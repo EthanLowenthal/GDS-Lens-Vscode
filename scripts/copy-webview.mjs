@@ -1,6 +1,13 @@
 // Copies the viewer payload out of the gds-lens package into dist/webview,
 // which is what src/extension.cjs points the webview at.
 //
+// gds-lens builds two payloads. This takes inline-wasm, where the binary is
+// embedded in gdstk_wasm.js, rather than the default web one that fetches a
+// separate .wasm: a webview cannot reach its own asset URLs, from a Worker or
+// from the main thread, so there is nothing to fetch it with. That costs
+// streaming compilation and a separate cache entry for the binary, which is
+// the price of running here at all.
+//
 // Copying rather than reaching into node_modules/ through asWebviewUri keeps
 // localResourceRoots and .vscodeignore simple: everything the webview loads
 // lives under dist/, and node_modules never has to ship inside the .vsix.
@@ -14,14 +21,14 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 
 const pkg = dirname(require.resolve("gds-lens/package.json"));
-const from = join(pkg, "dist", "webview");
+const from = join(pkg, "dist", "inline-wasm");
 const to = join(root, "dist", "webview");
 
 try {
     await access(from);
 } catch {
     console.error(
-        `gds-lens has no built dist/webview at ${from}.\n` +
+        `gds-lens has no built inline-wasm payload at ${from}.\n` +
         "Build it there first: (cd ../GDS-Lens && npm run build:wasm && npm run build)"
     );
     process.exit(1);

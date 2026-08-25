@@ -23,7 +23,9 @@ from there as a package.
   package into `dist/webview/`, which is what the host points the webview at.
   Copying rather than reaching into `node_modules/` through `asWebviewUri`
   keeps `localResourceRoots` and `.vscodeignore` simple, and keeps
-  `node_modules` out of the `.vsix` entirely.
+  `node_modules` out of the `.vsix` entirely. It takes the library's
+  `inline-wasm` payload rather than its default `web` one; see "Why the wasm is
+  embedded" below.
 - `test/fixtures/` - sample layouts and marker databases, kept here for
   `npm run test:web`. The unit tests moved to the library with the code they
   cover.
@@ -83,6 +85,29 @@ npm run compile      # copy dist/webview/ from gds-lens, then bundle the host
 
 `npm run package` does this for you via `vscode:prepublish`.
 
+### Why the wasm is embedded
+
+`gds-lens` builds two payloads. Its default, `dist/web/`, ships
+`gdstk_wasm.js` plus a separate `gdstk_wasm.wasm` that the JS fetches - the
+normal way to ship WebAssembly, and the better one: the browser
+stream-compiles the binary while it downloads and caches it apart from the JS.
+
+A webview cannot do that. Its resource protocol (`vscode-cdn.net`) serves
+`<script src>` tags in the main document fine, but nothing else reaches it:
+`fetch()` against one of those URLs fails from the main thread, and a Worker
+(even a blob one) cannot even `importScripts()` from it. So there is no way to
+pull a separate binary in, from either thread.
+
+That is what `dist/inline-wasm/` is for: `-sSINGLE_FILE=1`, binary embedded in
+`gdstk_wasm.js`, nothing to fetch. `scripts/copy-webview.mjs` takes that one.
+It is a few KB larger over the wire and gives up streaming compilation, which
+is the price of running here at all.
+
+The same constraint is why the parse Worker's script is assembled by hand
+rather than loaded: `createWorker` in `src/webview-host.js` reads the
+concatenated `gdstk_wasm.js` + `wasm-worker.js` text out of the
+`#workerBundle` element in `viewer.html` and builds a blob from it.
+
 ## Working on the library at the same time
 
 `gds-lens` is a `file:../GDS-Lens` dependency, so npm symlinks it and edits
@@ -90,7 +115,7 @@ show up without reinstalling. The inner loop is two watchers, one per repo:
 
 ```sh
 # terminal 1, in ../GDS-Lens
-npm run watch        # rebuilds its dist/webview on every source edit
+npm run watch        # rebuilds its payloads on every source edit
 
 # terminal 2, here
 npm run watch        # re-copies dist/webview, then esbuild --watch on the host
@@ -124,8 +149,8 @@ npm run test:web     # serves the extension to a local Chromium on vscode.dev
 ```
 
 Almost all of the viewer was already portable - the wasm module is built with
-`-sSINGLE_FILE` so the `.wasm` is base64 inside `gdstk_wasm.js` with nothing to
-fetch, and the webview and its parse Worker were always browser code. The
+`-sSINGLE_FILE` so there is no binary to fetch (see below), and the webview and
+its parse Worker were always browser code. The
 extension host was the part that wasn't, and it stays portable only by using
 no Node builtins at all:
 
@@ -247,8 +272,8 @@ shell history.
 
 Bump `version` in `package.json`, update `CHANGELOG.md`, make sure the
 `gds-lens` build you are packaging against is current (`npm run compile` copies
-whatever is in that package's `dist/webview/`, so a stale library build ships
-silently), then:
+whatever is in that package's `dist/inline-wasm/`, so a stale library build
+ships silently), then:
 
 ```sh
 npm run package       # -> GDS-Lens-<version>.vsix
