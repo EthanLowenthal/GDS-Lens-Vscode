@@ -106,8 +106,19 @@ concatenated `gdstk_wasm.js` + `wasm-worker.js` text out of the
 
 ## Working on the library at the same time
 
-`gds-lens` is a `file:../GDS-Lens` dependency, so npm symlinks it and edits
-show up without reinstalling. The inner loop is two watchers, one per repo:
+`gds-lens` is pinned to an exact published version, so what builds here is what
+users get, and a release cannot pick up an unpublished local edit. To work on
+both at once, point npm at the sibling checkout for the duration:
+
+```sh
+npm link ../GDS-Lens          # node_modules/gds-lens -> ../GDS-Lens
+npm unlink --no-save gds-lens && npm ci   # back to the pinned version
+```
+
+`npm ls gds-lens` says which one is in effect: a path means the link is live.
+Do not commit a `package.json` pointing at `file:../GDS-Lens`.
+
+With the link in place the inner loop is two watchers, one per repo:
 
 ```sh
 # terminal 1, in ../GDS-Lens
@@ -125,8 +136,23 @@ far too slow to trigger on keystrokes. And the extension's own `npm run watch`
 copies `dist/webview/` once at startup rather than watching it, so a library
 edit needs `npm run build:webview` here (or a restart) to cross over.
 
-Before releasing, check against the published package rather than the local
-path, so a broken publish fails here rather than on the Marketplace.
+Before releasing, unlink and `npm ci`, so a broken publish fails here rather
+than on the Marketplace.
+
+### Bumping the library
+
+The pin is exact on purpose. The payload filenames are part of the contract
+this repo depends on (`src/extension.cjs` looks up `gds-lens.html`,
+`gds-lens-engine.js` and `gds-lens-worker.js` by name), and 0.1.x makes no
+promise about them - the 0.1.0 rename broke exactly this and did so silently,
+with a 404 and a viewer stuck on its loading bar. So bump deliberately:
+
+```sh
+npm install --save-dev --install-links gds-lens@<version>
+npm run compile && npm run package
+```
+
+then open a layout in the Extension Development Host before tagging.
 
 ## Running
 
