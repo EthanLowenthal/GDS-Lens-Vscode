@@ -70,7 +70,7 @@
     "@xmldom/xmldom": "^0.9.10",
     "esbuild": "^0.28.2",
     "eslint": "^10.5.0",
-    "gds-lens": "1.0.0",
+    "gds-lens": "1.0.1",
     "globals": "^17.11.0"
   },
   "repository": {
