@@ -404,14 +404,6 @@ class GdsEditorProvider {
             const wasmJsUri = asset('gdstk_wasm.js');
             const workerJsUri = asset('wasm-worker.js');
 
-            // 3. Convert the asset locations into authenticated Webview URIs
-            const jsWebviewUri = webviewPanel.webview.asWebviewUri(asset('viewer.js'));
-            const cellSearchJsWebviewUri = webviewPanel.webview.asWebviewUri(asset('cell-search.js'));
-            const markerParsersJsWebviewUri = webviewPanel.webview.asWebviewUri(asset('marker-parsers.js'));
-            const loadErrorsJsWebviewUri = webviewPanel.webview.asWebviewUri(loadErrorsJsUri);
-            const wasmJsWebviewUri = webviewPanel.webview.asWebviewUri(wasmJsUri);
-            const lilGuiJsWebviewUri = webviewPanel.webview.asWebviewUri(asset('lil-gui.umd.min.js'));
-
             // The Worker (see viewer.js) needs gdstk_wasm.js's and
             // wasm-worker.js's full text to build its own Blob script from --
             // neither `importScripts(asWebviewUri(...))` from inside the
@@ -439,12 +431,17 @@ class GdsEditorProvider {
 
             // 4. Load the base HTML text and dynamically swap out the standard script references
             let htmlContent = await readText(htmlUri);
-            htmlContent = htmlContent.replace('src="gdstk_wasm.js"', 'src="' + wasmJsWebviewUri.toString() + '"');
-            htmlContent = htmlContent.replace('src="lil-gui.umd.min.js"', 'src="' + lilGuiJsWebviewUri.toString() + '"');
-            htmlContent = htmlContent.replace('src="cell-search.js"', 'src="' + cellSearchJsWebviewUri.toString() + '"');
-            htmlContent = htmlContent.replace('src="marker-parsers.js"', 'src="' + markerParsersJsWebviewUri.toString() + '"');
-            htmlContent = htmlContent.replace('src="load-errors.js"', 'src="' + loadErrorsJsWebviewUri.toString() + '"');
-            htmlContent = htmlContent.replace('src="viewer.js"', 'src="' + jsWebviewUri.toString() + '"');
+            // Every <script src="name.js"> in the payload, rewritten in one
+            // sweep rather than one hand-written line each. The payload
+            // references its siblings by bare filename, which a webview cannot
+            // resolve: they have to become authenticated webview URIs. Doing
+            // this generically matters more than it looks -- a file added to
+            // the payload but forgotten here fails silently. It 404s, the
+            // global it defined is undefined, and the viewer sits on its
+            // loading bar with nothing in the log to say why.
+            htmlContent = htmlContent.replace(
+                /src="([A-Za-z0-9_.-]+\.js)"/g,
+                (_match, name) => 'src="' + webviewPanel.webview.asWebviewUri(asset(name)).toString() + '"');
             // The payload ships a CSP valid for an ordinary page ('self');
             // inside a webview the assets come from VS Code's own resource
             // origin instead, which is what cspSource names.
