@@ -145,7 +145,11 @@ function formatBytes(bytes) {
 }
 
 function activate(context) {
-    logger.show(true);
+    // Deliberately not logger.show(): revealing the panel on activation takes
+    // the bottom dock away from whatever was in it (a terminal, usually) every
+    // time a layout is opened. The log is still written and is one click away
+    // under Output > GDSII Debugger, and "GDSLens: Toggle Debug Tools" opens
+    // the in-viewer log for the half of the story the host cannot see.
     logger.appendLine(">>> GDSII Extension Core Spinning Up (wasm parsing + rendering)...");
 
     const provider = new GdsEditorProvider(context);
