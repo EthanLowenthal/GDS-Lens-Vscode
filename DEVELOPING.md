@@ -143,9 +143,11 @@ than on the Marketplace.
 
 The pin is exact on purpose. The payload filenames are part of the contract
 this repo depends on (`src/extension.cjs` looks up `gds-lens.html`,
-`gds-lens-engine.js` and `gds-lens-worker.js` by name), and 0.1.x makes no
-promise about them - the 0.1.0 rename broke exactly this and did so silently,
-with a 404 and a viewer stuck on its loading bar. So bump deliberately:
+`gds-lens-engine.js` and `gds-lens-worker.js` by name), and nothing verifies
+them at build time - the 0.1.0 rename broke exactly this and did so silently,
+with a 404 and a viewer stuck on its loading bar. From 1.0.0 the element's API
+is under semver, but the served payload's filenames are not called out as part
+of it, so bump deliberately:
 
 ```sh
 npm install --save-dev --install-links gds-lens@<version>

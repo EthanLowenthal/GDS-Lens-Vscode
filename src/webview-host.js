@@ -129,6 +129,14 @@
 
         connect: (api) => {
             viewer = api;
+            // The extension host still has to read the file off disk, ungzip
+            // it and post the bytes over, and on a large layout or a
+            // vscode-vfs: URI that is a real wait. Without this the viewer
+            // says "No layout loaded" for the whole of it, which reads as an
+            // editor that opened onto nothing. A queued init below supersedes
+            // it immediately, so this only shows when there is genuinely
+            // nothing yet.
+            if (viewer.showLoading) viewer.showLoading();
             while (queued.length) handle(queued.shift());
         }
     };
