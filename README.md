@@ -7,9 +7,9 @@
 
 **Open a chip layout in VS Code.** GDS Lens adds a custom editor for `.gds`
 (GDSII) and `.oas` / `.oasis` (OASIS) files, gzipped or not: open one and it's
-parsed and rendered in a WebGL2 canvas, with KLayout `.lyp` colors, a cell
+parsed and rendered in a WebGL2 canvas, with `.lyp` colors, a cell
 hierarchy tree, find-by-name, saved views, a snapping ruler and DRC/LVS marker
-browsing. No install beyond the extension — no KLayout, no Python, no server.
+browsing. No install beyond the extension — no the .lyp/.lyrdb tooling, no Python, no server.
 
 ![GDS Lens rendering a GDSII layout](images/example.png)
 
@@ -26,9 +26,9 @@ browsing. No install beyond the extension — no KLayout, no Python, no server.
 - **Find by name** — any cell, or any of the layout's own text labels.
 - **Saved views** — name a camera and layer set, and come back to it.
 - **A PDK-scale layer panel** — filter, solo, shape counts, bulk show/hide.
-- **KLayout `.lyp` colors**, remembered per layout.
+- **`.lyp` colors**, remembered per layout.
 - **A ruler** with vertex/edge snapping and axis constraint.
-- **DRC/LVS markers** from KLayout `.lyrdb` or Calibre DRC ASCII results.
+- **DRC/LVS markers** from `.lyrdb` or ASCII DRC results.
 - **Coordinate readout, scale bar and grid**, plus a go-to-coordinate command.
 - **Your VS Code theme**, light or dark, switching live.
 
@@ -103,7 +103,7 @@ A collapsed folder for the things you set once:
 | **Text** | The layout's own `TEXT` labels, drawn in their layer's color (off by default — a dense design's labels bury the geometry) |
 | **Merge Overlaps** | Draw each layer as the union of its polygons, without internal edges |
 | **Grid** | Background reference grid, pitched at a round nm/µm/mm step that follows the zoom (on by default) |
-| **Load KLayout .lyp File** | Custom layer colors |
+| **Load .lyp File** | Custom layer colors |
 | **Load Marker File** | A DRC/LVS marker database — see below |
 | **Reset View** | Refit the layout to the window |
 
@@ -151,7 +151,7 @@ outside) the edge of the design.
 
 ### DRC/LVS markers
 
-**Load Marker File** takes a KLayout `.lyrdb` report database or a Calibre DRC
+**Load Marker File** takes a `.lyrdb` report database or a ASCII DRC
 ASCII results database (detected from the file's content, not its extension).
 
 - Violations draw as a red overlay above all layers.
@@ -165,7 +165,7 @@ ASCII results database (detected from the file's content, not its extension).
 
 ### Reloading after a rewrite
 
-When the open layout is rewritten on disk (by a generator script, KLayout, ...) a
+When the open layout is rewritten on disk (by a generator script, the .lyp/.lyrdb tooling, ...) a
 header offers **Reload**, which re-reads the file while keeping the camera and
 per-layer visibility. **Always** reloads without asking from then on.
 

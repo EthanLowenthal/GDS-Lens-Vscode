@@ -10,7 +10,7 @@ const { parseCoordinatePair } = require('gds-lens/coord-parse');
 
 const logger = vscode.window.createOutputChannel("GDSII Debugger");
 
-// globalState key holding the URI of the most recently loaded KLayout .lyp,
+// globalState key holding the URI of the most recently loaded .lyp,
 // so it's re-applied automatically to every GDS viewer opened afterwards
 // (across windows and restarts). We store the location rather than the file text
 // so edits to the .lyp are picked up on reopen, and so the stored state stays
@@ -57,7 +57,7 @@ const MAX_MARKER_BYTES = 512 * 1024 * 1024;
 
 // How long the layout file has to hold a steady size+mtime before a reload
 // reads it. Layout writers rarely produce one clean change event: generator
-// scripts and KLayout write in chunks, and some tools write a temp file and
+// scripts and the .lyp/.lyrdb tooling write in chunks, and some tools write a temp file and
 // rename it over the target (which arrives as delete-then-create). Reading on
 // the first event would routinely hit a half-written file and report a bogus
 // parse error.
@@ -278,7 +278,7 @@ class GdsEditorProvider {
         }
     }
 
-    // Marker-database twin of postLyp: reads a .lyrdb / Calibre results file
+    // Marker-database twin of postLyp: reads a .lyrdb / ASCII DRC results file
     // and pushes its text to one viewer (format sniffing happens in the
     // webview -- see marker-parsers.js). Gzipped databases are expanded here:
     // full-chip results run to hundreds of MB and are routinely stored
@@ -722,7 +722,7 @@ class GdsEditorProvider {
                         // there is no local disk to fall back on and the only
                         // readable files are the ones in the opened workspace.
                         defaultUri: vscode.Uri.joinPath(document.uri, '..'),
-                        filters: { 'KLayout Properties': ['lyp'] }
+                        filters: { 'the .lyp/.lyrdb tooling Properties': ['lyp'] }
                     };
                     const fileUri = await vscode.window.showOpenDialog(options);
                     if (fileUri && fileUri[0]) {
@@ -739,7 +739,7 @@ class GdsEditorProvider {
                         openLabel: 'Load Marker Database',
                         defaultUri: vscode.Uri.joinPath(document.uri, '..'),
                         // Content-sniffed in the webview, so the filter is loose:
-                        // Calibre ASCII results get named all sorts of things.
+                        // ASCII DRC results get named all sorts of things.
                         filters: {
                             'Marker databases': ['lyrdb', 'rdb', 'rve', 'results', 'db', 'ascii', 'txt', 'gz'],
                             'All files': ['*']

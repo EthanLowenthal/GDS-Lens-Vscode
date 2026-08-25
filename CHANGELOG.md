@@ -137,7 +137,7 @@
 
 ## [1.6.1] - 2026-08-17
 
-- **Calibre DRC results databases are read the way Calibre writes them.** The
+- **ASCII DRC results databases are read the way Some writers write them.** The
   ASCII database is a counted format — the line under each check name says how
   many description lines and how many results follow — and the parser had been
   guessing from the shape of the lines instead.
@@ -172,7 +172,7 @@
 - **A quieter control panel.** The panel opened with nine rows of chrome stacked
   above a collapsed **Layers** folder — which is the one thing anyone opens a
   layout to use. The four render toggles (**Infill**, **Text**, **Merge
-  Overlaps**, **Grid**), both file loaders (**Load KLayout .lyp File**, **Load
+  Overlaps**, **Grid**), both file loaders (**Load .lyp File**, **Load
   Marker File**) and **Reset View** now live in a single collapsed **Display**
   folder. Grouped by how often they're touched rather than by what they act on:
   the toggles are a preference set once, and the two loaded files are remembered
@@ -385,7 +385,7 @@
   to Pan (clearing the measurement), as the docs already claimed — neither key
   had actually been wired up.
 - Reloading when the layout changes on disk. A viewer now watches its own
-  file, and when a generator script or KLayout rewrites it, a header offers a
+  file, and when a generator script or the .lyp/.lyrdb tooling rewrites it, a header offers a
   Reload button. Reloading keeps the camera and the per-layer visibility
   checkboxes, so re-running a generator drops the new geometry in place
   instead of throwing you back to a framed view of the whole design; layers
@@ -505,10 +505,10 @@
 - Marker database support: load DRC/LVS violation markers on top of the
   layout via the new "Load Marker File" panel button. One button, format
   auto-detected by content:
-  - KLayout report databases (`.lyrdb`) — boxes, polygons (including hole
+  - .lyrdb report databases (`.lyrdb`) — boxes, polygons (including hole
     rings), edges, and edge-pairs; nested categories; text/float-only values
     shown in the item label.
-  - Calibre DRC ASCII results databases (any extension) — polygon and edge
+  - ASCII DRC results databases (any extension) — polygon and edge
     clusters, with coordinates scaled by the header's precision.
 - Markers draw as a red highlight overlay above all layers (translucent fill,
   outlines, and end ticks on edge markers so they're findable when zoomed
@@ -536,11 +536,11 @@
 - Infill is now hidden by default.
 - Layer list: names are no longer cut off after the layer number — labels
   stay on one line, truncate with an ellipsis, and show in full on hover.
-- KLayout `.lyp` handling:
+- `.lyp` handling:
   - Entries without usable colors are kept (their names and visibility
     apply; colors fall back to the defaults) instead of being dropped.
   - A group's `<visible>` flag now cascades to the layers inside it,
-    matching KLayout.
+    matching the .lyp/.lyrdb tooling.
   - `<fill-brightness>`/`<frame-brightness>` are applied to the colors.
   - More robust XML parsing: tag attributes, character entities, comments,
     and self-closing tags are handled.
@@ -562,6 +562,6 @@ Initial release.
   the layout to the window.
 - Per-layer visibility toggles.
 - Infill toggle to show or hide the hatched layer fill.
-- Optional KLayout `.lyp` file loading to drive layer colors.
+- Optional `.lyp` file loading to drive layer colors.
 - "GDSLens: Toggle Debug Tools" command to show/hide the render stats readout
   and debug log.
