@@ -5,7 +5,7 @@
 // localResourceRoots and .vscodeignore simple: everything the webview loads
 // lives under dist/, and node_modules never has to ship inside the .vsix.
 
-import { cp, access, rm } from "node:fs/promises";
+import { cp, copyFile, access, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -29,4 +29,12 @@ try {
 
 await rm(to, { recursive: true, force: true });
 await cp(from, to, { recursive: true });
-console.log(`dist/webview <- ${from}`);
+
+// The library ships a host.js implementing its ViewerHost interface for a
+// plain web page: an <input type=file> for the pickers, localStorage for saved
+// views, prompt() for a name. None of that is right inside a webview, where
+// those services belong to the extension host, so ours replaces it. This one
+// substitution is the entire VS Code-specific part of the viewer.
+await copyFile(join(root, "src", "webview-host.js"), join(to, "host.js"));
+
+console.log(`dist/webview <- ${from} (host.js <- src/webview-host.js)`);

@@ -50,6 +50,18 @@ export default [
         rules,
     },
     {
+        // The webview-side host adapter. A plain browser <script> loaded into
+        // the webview (as host.js), not part of the host bundle, so it gets
+        // browser globals plus the one VS Code injects into a webview.
+        files: ["src/webview-host.js"],
+        languageOptions: {
+            globals: { ...globals.browser, acquireVsCodeApi: "readonly" },
+            ecmaVersion: 2022,
+            sourceType: "script",
+        },
+        rules,
+    },
+    {
         // Build tooling. Real Node, ESM, runs on a developer's machine and
         // never ships, so none of the portability constraints above apply.
         files: ["scripts/**/*.mjs"],
