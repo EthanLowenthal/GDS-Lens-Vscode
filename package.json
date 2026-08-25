@@ -76,11 +76,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/EthanLowenthal/GDS-Lens"
+    "url": "https://github.com/EthanLowenthal/GDS-Lens-Vscode"
   },
-  "homepage": "https://github.com/EthanLowenthal/GDS-Lens#readme",
+  "homepage": "https://github.com/EthanLowenthal/GDS-Lens-Vscode#readme",
   "bugs": {
-    "url": "https://github.com/EthanLowenthal/GDS-Lens/issues"
+    "url": "https://github.com/EthanLowenthal/GDS-Lens-Vscode/issues"
   },
   "contributes": {
     "commands": [
