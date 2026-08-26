@@ -1,6 +1,15 @@
 # Change Log
 
-## [1.7.0] - 2026-08-25
+## [1.7.1] - 2026-08-26
+
+- **Layouts open on vscode.dev and github.dev again.** Installed from the
+  Marketplace into the browser, the viewer came up as an empty panel: its
+  scripts are served from the Marketplace's own domain there rather than from
+  VS Code's, and the editor's content policy did not allow that domain, so the
+  browser refused to run any of them. The policy now names wherever the scripts
+  are actually being served from. The desktop version was never affected, and
+  neither was the local web test the port was checked against, which serves the
+  extension from the same address as the editor and so allowed it by accident.
 
 - **The Output panel no longer takes over when you open a layout.** Opening a
   file revealed the GDS Lens output channel every time, which pulled focus off
