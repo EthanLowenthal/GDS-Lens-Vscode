@@ -200,6 +200,20 @@ local disk, so the `.lyp` and marker pickers can only reach files in the opened
 virtual workspace, and a read-only filesystem provider emits no change events,
 so auto-reload never fires there.
 
+One difference is not in the code and not in the environment either, and it is
+worth knowing about because `npm run test:web` cannot see it. `asWebviewUri`
+returns an `http`/`https` URI untouched - the browser can already load it - so
+on the web the webview's scripts come from wherever the extension itself is
+served from, not from VS Code's resource origin. On the real vscode.dev that is
+`https://<publisher>.vscode-unpkg.net`, an origin `webview.cspSource` says
+nothing about, so the CSP has to name it as well or every script in the payload
+is blocked and the editor opens blank. Under `test:web` the extension and the
+webview are served from the same `localhost` origin, which `'self'` covers on
+its own, so a CSP missing that origin passes locally and fails only once
+installed from the Marketplace. Anything else that depends on those two being
+separate origins has the same blind spot; the only real check is installing a
+published build on vscode.dev.
+
 ## Layout size limits
 
 Parsing, flattening and triangulating all happen inside a 32-bit WebAssembly

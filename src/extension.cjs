@@ -445,11 +445,32 @@ class GdsEditorProvider {
                 /src="([A-Za-z0-9_.-]+\.js)"/g,
                 (_match, name) => 'src="' + webviewPanel.webview.asWebviewUri(asset(name)).toString() + '"');
             // The payload ships a CSP valid for an ordinary page ('self');
-            // inside a webview the assets come from VS Code's own resource
-            // origin instead, which is what cspSource names.
+            // inside a webview the scripts come from somewhere else, and the
+            // policy has to name wherever that turns out to be.
+            //
+            // Two places, in practice. On the desktop asWebviewUri rewrites the
+            // file: URIs onto VS Code's own resource origin, which is exactly
+            // what cspSource names. On the web it rewrites nothing: an http(s)
+            // URI is already something the browser can load, so it comes back
+            // untouched, and on vscode.dev the extension is served from
+            // https://<publisher>.vscode-unpkg.net -- an origin cspSource says
+            // nothing about. Naming cspSource alone there blocks all three
+            // scripts in the payload and the editor comes up blank with only
+            // CSP violations in the webview console to say so.
+            //
+            // Rather than restate VS Code's rule for which host rewrites what,
+            // read the origin off a URI that has actually been through
+            // asWebviewUri and name that as well. On the desktop it is the
+            // resource origin cspSource already covers, and saying it twice
+            // costs nothing.
+            const scriptOrigin = (uri) =>
+                (uri.scheme === 'http' || uri.scheme === 'https') && uri.authority
+                    ? ' ' + uri.scheme + '://' + uri.authority
+                    : '';
             htmlContent = htmlContent.replace(
                 "script-src 'self'",
-                'script-src ' + webviewPanel.webview.cspSource);
+                'script-src ' + webviewPanel.webview.cspSource
+                + scriptOrigin(webviewPanel.webview.asWebviewUri(asset('gds-lens.js'))));
             // The tag is ours to add, not the payload's to carry: the library
             // serves one HTML file to every host, and only this one needs the
             // worker inlined. It goes in the outer document (createWorker in
