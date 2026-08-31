@@ -1,5 +1,21 @@
 # Change Log
 
+## [1.7.2] - 2026-08-31
+
+- **Thin shapes no longer disappear when you merge overlapping shapes.** With
+  merging on, a full-die view lost every waveguide. The merge pass works out
+  what to draw from a screen-space coverage mask built out of fill triangles,
+  but with infill off a layer is normally drawn as outlines, and an outline
+  covers at least one pixel however far out you zoom while the fill triangles
+  of a half-micron waveguide cover none at all. The mask now takes the outlines
+  into account too, so merging shows what the layer actually draws.
+
+- **`[` and `]` stay inside the category you are stepping through.** With a
+  marker selected in a category you had unticked, the first press jumped to an
+  unrelated result elsewhere in the file, and so did running off the end of the
+  list. Stepping now stays within the selected marker's own category whenever
+  that category is hidden.
+
 ## [1.7.1] - 2026-08-26
 
 - **Layouts open on vscode.dev and github.dev again.** Installed from the
