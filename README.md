@@ -13,6 +13,11 @@ browsing. No install beyond the extension - no the .lyp/.lyrdb tooling, no Pytho
 
 ![GDS Lens rendering a GDSII layout](images/example.png)
 
+**Try it first, without installing anything:** the same viewer runs as a
+[web page](https://lowenth.al/GDS-Lens/) you can drop a layout onto. The
+extension is that viewer wired into VS Code, so what you see there is what you
+get here.
+
 **Install:** search *GDS Lens* in the Extensions view, or
 [get it on the Marketplace](https://marketplace.visualstudio.com/items?itemName=ethml.GDS-Lens)
 / [Open VSX](https://open-vsx.org/extension/ethml/GDS-Lens). Then open any
