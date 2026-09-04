@@ -2,7 +2,7 @@
   "name": "GDS-Lens",
   "displayName": "GDS Lens — GDSII & OASIS Layout Viewer",
   "description": "GPU-accelerated GDSII and OASIS viewer. C++ parser and WebGL2 renderer in WebAssembly. 100M+ polygon layouts, photonic ports with arrows, .lyp colors, ruler, DRC/LVS markers. Runs on vscode.dev.",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "icon": "images/logo.png",
   "license": "MIT",
   "categories": [

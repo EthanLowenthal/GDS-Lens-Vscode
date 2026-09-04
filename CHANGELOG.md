@@ -1,6 +1,6 @@
 # Change Log
 
-## [Unreleased]
+## [1.7.3] - 2026-09-04
 
 - **gdsfactory / kfactory ports are drawn and listed.** A layout written by
   gdsfactory 8+ carries its ports as KLayout metadata inside the file (a
