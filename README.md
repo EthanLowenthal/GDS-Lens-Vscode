@@ -34,6 +34,7 @@ Drag to pan. Scroll to zoom.
 - **Ruler**: measure with snapping to vertices and edges.
 - **Saved views**: name a camera position and layer set and return to it later.
 - **DRC/LVS markers**: browse `.lyrdb` or ASCII marker databases as an overlay.
+- **Auto reload**: when a generator script rewrites the file, the view updates and keeps your camera and layer visibility.
 - **Theme**: follows your VS Code light or dark theme.
 
 ## Use the viewer
