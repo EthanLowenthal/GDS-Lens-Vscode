@@ -1,5 +1,30 @@
 # Change Log
 
+## [Unreleased]
+
+- **gdsfactory / kfactory ports are drawn and listed.** A layout written by
+  gdsfactory 8+ carries its ports as KLayout metadata inside the file (a
+  `$$$CONTEXT_INFO$$$` cell in GDSII, `KLAYOUT_CONTEXT` properties in OASIS),
+  which until now was read past. The viewer now decodes it - name, type,
+  position, direction, width and layer, through the named cross-section - and
+  marks every placement of every port on the canvas: a bar across the port, an
+  arrow the way it faces, its name once few enough are on screen to read.
+  Optical ports are orange, electrical green. A **Ports** toggle in Display
+  turns the overlay off, a **Ports** folder lists the top cell's ports and
+  centers the view on one when clicked, and a cell's hierarchy tooltip names
+  its ports. Files without the metadata look exactly as before. (gds-lens
+  1.2.0.)
+
+- **The README says what the viewer is made of and what it handles.** The
+  listing led with the file types and left the rest to be discovered: that the
+  parser and renderer are C++ compiled to WebAssembly with no native binary or
+  Python behind them, that the same code runs on vscode.dev, and what size of
+  layout fits. A Performance section now states the measured figures (a 37 MB
+  layout on screen in 0.25 s; 115 million flattened polygons in 2 GB) and the
+  ceiling, reproducible with the new `npm run bench` script. The Marketplace
+  description and the feature list now lead with rendering and layout size,
+  and the keywords and GitHub topics gained the terms people search by.
+
 ## [1.7.2] - 2026-08-31
 
 - **Thin shapes no longer disappear when you merge overlapping shapes.** With

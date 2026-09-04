@@ -216,6 +216,16 @@ published build on vscode.dev.
 
 ## Layout size limits
 
+### Benchmarking
+
+`npm run bench -- <file>...` loads each layout headlessly in Node with the
+inline wasm module out of `node_modules/gds-lens` (the one `dist/webview` is
+copied from) and prints a Markdown table: parse + triangulate time, polygon and
+placement counts, and the module's heap size afterwards. Gzipped files are
+expanded first, as the extension host does. The README's Performance section
+quotes its output; re-run it on the same files after a change to the parser or
+the triangulator, and paste the rows back.
+
 Parsing, flattening and triangulating all happen inside a 32-bit WebAssembly
 module, so everything has to fit in one 4 GB address space
 (`-sMAXIMUM_MEMORY` in the library's `src/wasm/CMakeLists.txt`, Emscripten's default being
