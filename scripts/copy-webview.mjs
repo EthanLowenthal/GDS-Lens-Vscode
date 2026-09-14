@@ -42,4 +42,13 @@ await cp(from, to, { recursive: true });
 // substitution is the entire VS Code-specific part of the viewer.
 await copyFile(join(root, "src", "webview-host.js"), join(to, "gds-lens-host.js"));
 
-console.log(`dist/webview <- ${from} (gds-lens-host.js <- src/webview-host.js)`);
+// The comparison view's own page (see compare-provider.cjs). Copied into the
+// same dist/webview/ directory rather than a second one: every script it
+// loads -- the engine, the parse worker, the <gds-lens> element and
+// gds-lens-host.js -- is the identical file the single-file editor loads.
+// It is one <gds-lens> holding two layouts, not a second kind of viewer, so
+// there is nothing here that needs its own copy of anything.
+await copyFile(join(root, "src", "compare.html"), join(to, "compare.html"));
+
+console.log(`dist/webview <- ${from} (gds-lens-host.js <- src/webview-host.js, ` +
+    `compare.html <- src/)`);

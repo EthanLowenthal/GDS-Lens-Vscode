@@ -1,5 +1,35 @@
 # Change Log
 
+## [1.8.0] - 2026-09-14
+
+- **Compare Layouts.** Two `.gds`/`.oas`/`.oasis` files opened together.
+  Reached three ways: the compare button in an open layout's editor title bar
+  (**GDSLens: Compare Current Layout With...**, which asks for the file to
+  compare against and starts the picker in the open layout's own folder),
+  selecting exactly two files in the Explorer and choosing **Compare Layouts**
+  from the context menu, or that same command from the palette with nothing
+  selected, which asks for both.
+
+  The two are overlaid in one viewer, drawn through one camera, and the panel
+  grows a **Compare** folder: an **A ↔ B** crossfade (either end shows one
+  layout on its own), an optional per-layout tint, and **Highlight
+  differences**, which marks per layer where the two disagree -- one colour
+  where only the first has geometry, another where only the second does. That
+  highlight works at the resolution being viewed, so zooming in resolves
+  smaller differences; it finds where to look rather than reporting an area.
+
+  The layer list shows both layouts' layers, marked A or B where only one has
+  it, so a layer added or removed between revisions is visible as a row. The
+  hierarchy browser roots both cell trees, and cell and label search covers
+  both. Everything else is single because the viewer is: one camera, one set
+  of rulers, one `.lyp`, one marker database. The reload banner names
+  whichever file changed. (gds-lens 1.3.0.)
+
+- **gdsfactory / kfactory ports actually ship here.** The 1.7.3 notes below
+  announced them, but that build pinned gds-lens 1.2.0, which does not contain
+  the code -- the feature was still unreleased in the library. It arrives with
+  the move to gds-lens 1.3.0 in this release, and works as 1.7.3 described it.
+
 ## [1.7.3] - 2026-09-04
 
 - **gdsfactory / kfactory ports are drawn and listed.** A layout written by

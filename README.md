@@ -34,6 +34,7 @@ Drag to pan. Scroll to zoom.
 - **Ruler**: measure with snapping to vertices and edges.
 - **Saved views**: name a camera position and layer set and return to it later.
 - **DRC/LVS markers**: browse `.lyrdb` or ASCII marker databases as an overlay.
+- **Compare layouts**: open two files overlaid in one viewer, crossfade between them, and highlight where they differ.
 - **Auto reload**: when a generator script rewrites the file, the view updates and keeps your camera and layer visibility.
 - **Theme**: follows your VS Code light or dark theme.
 
@@ -116,6 +117,46 @@ GDSII and OASIS files. Files without it look unchanged.
 When the open file changes on disk, a header offers **Reload**. Reloading keeps
 the camera and layer visibility. Click **Always** to reload without asking.
 
+### Compare layouts
+
+Two ways in:
+
+- With a layout already open, use the compare button in the editor's title bar,
+  or **GDSLens: Compare Current Layout With...** from the command palette, and
+  pick the file to compare it against. The open layout is A, the one you pick
+  is B. The picker starts in the open layout's own folder, which is also what
+  keeps it on the right machine when you are working over SSH, in a container,
+  in a Codespace or on vscode.dev: the dialog browses wherever the extension
+  host runs, which is where the file you have open lives.
+- Or select two layout files in the Explorer, right-click, and choose **Compare
+  Layouts**. Running that command with nothing selected asks for both files.
+
+Both open in one viewer, drawn on top of each other through one camera. The
+panel grows a **Compare** folder holding:
+
+- **A ↔ B**, a crossfade. Drag it to either end to see one layout on its own,
+  or leave it in the middle to overlay them. Flicking between the ends is the
+  fastest way to see what moved.
+- **Tint sources**, off by default, which nudges each layout toward its own
+  hue. Two revisions are the same colours in the same places, so at a 50/50
+  blend they can look like one layout; this is how to tell them apart without
+  giving up the overlay.
+- **Highlight differences**, which marks where the two disagree, layer by
+  layer: red where only the first has geometry, green where only the second
+  does. It works at the resolution you are viewing, so zoom in to resolve a
+  smaller difference. It finds the places to look; it is not a geometric XOR
+  and it will not give you an area.
+
+The layer list shows both layouts' layers, marked **A** or **B** where only
+one of them has it — which is how a layer added or removed between revisions
+shows up at all. The hierarchy browser roots both designs' cell trees, and
+cell and label searches cover both, with the same marks on the results.
+
+Everything else is single, because there is only one viewer: one camera, one
+set of rulers, one `.lyp`, one marker database. The reload banner names
+whichever file changed on disk, and reloading clears rulers, the same as
+reloading a single layout does.
+
 ## Performance
 
 Parsing, flattening, and triangulation run in a WebAssembly worker, off the
@@ -151,6 +192,8 @@ To measure your own files, run `npm run bench -- <file>...`. See
 | Command | Action |
 | --- | --- |
 | **GDSLens: Go to Coordinate** | Center the view on a pasted coordinate |
+| **GDSLens: Compare Layouts** | Open two layouts overlaid in one viewer, with a crossfade and a difference highlight |
+| **GDSLens: Compare Current Layout With...** | Compare the layout you have open against another you pick |
 | **GDSLens: Toggle Auto-Reload on Change** | Turn automatic reloading on or off (the `GDS-Lens.autoReload` setting) |
 | **GDSLens: Toggle Debug Tools** | Show or hide the render stats readout and debug log |
 

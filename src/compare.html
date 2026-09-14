@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; worker-src blob:; connect-src 'self';">
+    <title>GDS Lens — Compare</title>
+    <style>
+        /* Same reasoning as the library's own gds-lens.html: the harness only,
+           since the viewer's chrome is styled inside its shadow root and cannot
+           be reached from here. */
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            background: #1a1a1a;
+            display: flex;
+            flex-direction: column;
+        }
+        .files {
+            flex: 0 0 auto;
+            display: flex;
+            gap: 16px;
+            padding: 2px 8px;
+            font: 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            color: #ccc;
+            background: #252525;
+            white-space: nowrap;
+            overflow: hidden;
+        }
+        .file {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            min-width: 0;
+        }
+        .file-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        /* The same two hues the viewer's own A/B chips use, so the bar and the
+           panel agree about which layout is which. */
+        .chip {
+            flex: none;
+            padding: 0 3px;
+            border-radius: 2px;
+            font-size: 9px;
+            font-weight: 600;
+            line-height: 14px;
+            color: #1a1a1a;
+        }
+        .chip-a { background: #e07358; }
+        .chip-b { background: #59a5d8; }
+        gds-lens {
+            display: block;
+            width: 100%;
+            flex: 1 1 auto;
+            min-height: 0;
+        }
+    </style>
+</head>
+<body>
+    <!-- Which file is A and which is B. Filled in by the init messages below;
+         the viewer's own Compare folder says the same thing next to the blend
+         slider, and this bar is what says it while the panel is closed. -->
+    <div class="files">
+        <div class="file"><span class="chip chip-a">A</span><span class="file-name" data-pane="left"></span></div>
+        <div class="file"><span class="chip chip-b">B</span><span class="file-name" data-pane="right"></span></div>
+    </div>
+
+    <!-- One viewer holding both layouts, not two viewers kept in step. The
+         camera, the control panel, the rulers and the marker overlay are
+         single-valued by construction, so there is nothing here to
+         synchronize and no sync controller to load. See the library's
+         docs/embedding.md, "Two layouts in one viewer". -->
+    <gds-lens id="viewer"></gds-lens>
+
+    <!-- Emscripten's output, loaded as a classic script for the
+         createGdstkModule global it defines. -->
+    <script src="gds-lens-engine.js"></script>
+    <!-- The same VS Code ViewerHost the single-file editor uses: one viewer
+         means one .lyp, one marker overlay and one pending pick, so there is
+         nothing about a comparison for it to know beyond which slot an
+         incoming layout belongs in. Must precede gds-lens.js, which reads
+         window.gdsLensHost as it starts. -->
+    <script src="gds-lens-host.js"></script>
+    <script src="gds-lens.js"></script>
+</body>
+</html>

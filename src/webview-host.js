@@ -7,6 +7,13 @@
 // scripts/copy-webview.mjs), and must load before viewer.js reads
 // window.gdsLensHost.
 //
+// One file for both entry points, the single-layout editor and the comparison
+// view, because a comparison is one viewer holding two layouts rather than two
+// viewers -- so there is still one .lyp, one marker overlay, one pending pick
+// and one set of saved views here. All a comparison adds is that a
+// pane-stamped message names which of the two layouts it is about, which is
+// the `slotOf` line below and nothing else.
+//
 // The interface it implements is documented in the library's
 // src/hosts/browser.js.
 
@@ -141,10 +148,32 @@
         }
     };
 
+    // The extension host stamps every layout-specific message with the pane it
+    // belongs to; the comparison view sends 'left' and 'right', the single
+    // editor sends nothing at all. Both map onto the viewer's two layout
+    // slots, with "a" as the default the single editor lands on.
+    const slotOf = (message) => (message.pane === "right" ? "b" : "a");
+
+    // The comparison page's "A foo.gds  B bar.gds" bar (see compare.html) --
+    // the one piece of chrome outside the viewer either page has, and this is
+    // where the filename arrives. A no-op in the single-file editor, whose
+    // page has no such bar and whose title says the filename anyway.
+    function setFileLabel(message) {
+        if (!message.name) return;
+        const label = document.querySelector(
+            '.file-name[data-pane="' + (message.pane === "right" ? "right" : "left") + '"]');
+        if (label) label.textContent = message.name;
+    }
+
     function handle(message) {
         switch (message.type) {
             case "init":
-                viewer.load(message.fileData, { reload: !!message.reload });
+                setFileLabel(message);
+                viewer.load(message.fileData, {
+                    reload: !!message.reload,
+                    slot: slotOf(message),
+                    name: message.name
+                });
                 break;
             case "loadError":
                 viewer.showError(message.message);
@@ -180,6 +209,10 @@
                 }
                 break;
             case "fileChanged":
+                // The text names the file when the extension host sent one,
+                // which matters here in a way it does not for a single editor:
+                // with two layouts open, "a newer version of this file" does
+                // not say which of the two.
                 viewer.showStale(message.text || "A newer version of this file is on disk.");
                 break;
             case "goToPoint":

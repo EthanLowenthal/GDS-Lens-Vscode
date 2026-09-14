@@ -50,10 +50,11 @@ export default [
         rules,
     },
     {
-        // The webview-side host adapter. A plain browser <script> loaded into
-        // the webview (as host.js), not part of the host bundle, so it gets
-        // browser globals plus the one VS Code injects into a webview.
-        files: ["src/webview-host.js"],
+        // The webview-side host adapters and the comparison view's sync
+        // controller. Plain browser <script>s loaded into a webview, not part
+        // of the host bundle, so they get browser globals plus the one VS
+        // Code injects into a webview.
+        files: ["src/webview-host.js", "src/compare-host.js", "src/compare-sync.js"],
         languageOptions: {
             globals: { ...globals.browser, acquireVsCodeApi: "readonly" },
             ecmaVersion: 2022,
