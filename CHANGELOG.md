@@ -1,6 +1,6 @@
 # Change Log
 
-## [1.8.1] - unreleased
+## [Unreleased]
 
 - **Fixed: a viewer that opened stuck on "Fetching layout...".** Most often on
   the first layout opened in a new window. The layout bytes were posted to the
