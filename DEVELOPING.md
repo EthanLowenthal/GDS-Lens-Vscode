@@ -47,7 +47,7 @@ own default host implements that for a plain page (`<input type=file>`,
 `localStorage`, `prompt()`); `src/webview-host.js` implements it for VS Code
 and is copied over the default as `host.js`.
 
-Three parts of it are worth knowing about, because each exists for a reason
+Four parts of it are worth knowing about, because each exists for a reason
 that is not obvious:
 
 - **The pickers are promises over a one-way protocol.** The extension host
@@ -62,6 +62,32 @@ that is not obvious:
   fine as a `<script src>` tag. So the extension host base64s the worker's whole
   script into `#workerBundle` in the outer document and the adapter builds the
   Worker from that.
+- **The `ready` post is a handshake the first send waits on.** A message posted
+  to a webview before its scripts have run is not queued for them. VS Code's
+  webview preload gives the content document 200ms to fire `load` and then
+  flushes whatever the extension host has posted into it regardless
+  (`hookupOnLoadHandlers` in `vs/workbench/contrib/webview/browser/pre/index.html`).
+  The payload is ~1.5 MB of engine, element and inlined worker, so a cold window
+  goes past that; `init` is then delivered to a document whose `message`
+  listener does not exist yet, and window message events are not replayed for a
+  listener that registers late. The layout bytes are gone and the viewer sits on
+  "Fetching layout..." for good, with the host log saying it sent the file and
+  the viewer log never mentioning it. So the adapter posts `{command: "ready"}`
+  as soon as its listener exists, and `createReadyGate` in `src/shared.cjs`
+  holds the first send until that arrives. The listener for it has to be
+  registered *before* `webview.html` is assigned, because assigning it is what
+  starts the page loading and `onDidReceiveMessage` does not buffer either. A
+  second `ready` is a webview that reloaded and came back holding nothing, so it
+  is sent the whole payload again.
+
+  The wait must **not** be awaited inside `resolveCustomEditor`. VS Code does
+  not put the webview into the editor until that method's promise resolves
+  (`WebviewEditor.setInput` awaits `input.resolve()` and only then calls
+  `claimWebview`, which mounts the iframe), so waiting there holds up the very
+  thing that produces the `ready`: the editor stays blank until the gate times
+  out. `src/extension.cjs` starts the send off the gate and returns; the
+  comparison view can await it, because a panel from `createWebviewPanel`
+  mounts on VS Code's own account with nothing waiting on the command.
 - **`isLightTheme()` maps VS Code's theme classes.** VS Code stamps
   `vscode-light` / `vscode-dark` / `vscode-high-contrast[-light]` onto `<body>`
   and rewrites it live. The viewer only wants a boolean, so the mapping lives on

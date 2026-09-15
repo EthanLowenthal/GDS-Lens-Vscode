@@ -230,4 +230,17 @@
         if (!viewer) queued.push(message);
         else handle(message);
     });
+
+    // "I am listening." Nothing is sent from the extension host until this
+    // arrives, because a message that lands before the listener above exists is
+    // gone for good -- window message events are not replayed for a listener
+    // that registers later, and VS Code's webview preload will flush what the
+    // host posted into this document 200ms after writing it whether or not its
+    // ~1.5 MB of scripts have run. Which, on a cold window, they have not. See
+    // createReadyGate in shared.cjs.
+    //
+    // Posted here rather than from connect(), because it is the listener that
+    // makes this page safe to send to, not the viewer: anything arriving before
+    // viewer.js connects is queued above and handed over then.
+    post({ command: "ready" });
 }());

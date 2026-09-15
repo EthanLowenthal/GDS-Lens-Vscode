@@ -1,5 +1,16 @@
 # Change Log
 
+## [1.8.1] - unreleased
+
+- **Fixed: a viewer that opened stuck on "Fetching layout...".** Most often on
+  the first layout opened in a new window. The layout bytes were posted to the
+  webview before its scripts had run, and were dropped: VS Code gives a
+  webview's document 200ms to load before delivering what the extension host
+  has posted into it, listening or not, and a cold window routinely takes
+  longer than that to load the viewer. The webview now announces itself and
+  nothing is sent until it does. A webview that reloads and comes back empty
+  asks again and is re-sent its layout, rather than sitting on the loading bar.
+
 ## [1.8.0] - 2026-09-14
 
 - **Compare Layouts.** Two `.gds`/`.oas`/`.oasis` files opened together.

@@ -43,6 +43,13 @@ const SETTLE_MS = 400;
 // appended to continuously would otherwise never reload at all.
 const SETTLE_TIMEOUT_MS = 30000;
 
+// How long the first send waits for the webview to say it is listening before
+// going ahead without it (see createReadyGate). Only a webview that never came
+// up at all -- a script that 404'd, a CSP that blocked one -- should ever reach
+// this, and such a page has nothing to show whatever we do; sending late is
+// still better than waiting on a handshake that is never coming.
+const READY_TIMEOUT_MS = 15000;
+
 // ---- Uri and encoding helpers ----------------------------------------------
 // The Node-free replacements for path.basename, fs.readFileSync('utf8') and
 // Buffer's base64/utf8 conversions.
@@ -481,12 +488,90 @@ function createLayoutLoader({ uri, post, logPrefix = '' }) {
     };
 }
 
+// The handshake in front of the first send.
+//
+// A message posted to a webview before its scripts have run is not queued for
+// them: VS Code's webview preload holds what the extension host posts only
+// until it decides the content document has loaded, and hookupOnLoadHandlers
+// (vs/workbench/contrib/webview/browser/pre/index.html) gives the document
+// 200ms to fire 'load' before declaring it loaded anyway and flushing
+// everything into it. The viewer payload is ~1.5 MB of engine, element and
+// inlined worker bundle, so a cold window -- extension host still activating,
+// nothing in any cache, the webview's service worker still installing -- goes
+// past that routinely. The flush then delivers 'init' to a document whose
+// 'message' listener does not exist yet, window message events are not
+// replayed for listeners that arrive late, and the layout bytes are simply
+// gone. The viewer sits on "Fetching layout..." for good, with the host log
+// saying it sent the file and the viewer log never mentioning it.
+//
+// So the page announces itself instead (the `ready` post at the end of
+// webview-host.js) and nothing is sent until it does. The listener has to be
+// registered *before* webview.html is assigned -- assigning it is what starts
+// the page loading, and onDidReceiveMessage buffers nothing either, so the
+// same race runs in the other direction.
+//
+// A later 'ready' is a webview that reloaded and lost everything it held --
+// VS Code re-creates the content frame on its own account, and "Developer:
+// Reload Webviews" does it on the user's -- so it is a request for the whole
+// payload again rather than a handshake, and `onReconnect` resends it.
+function createReadyGate({ webview, onReconnect, logPrefix = '' }) {
+    // Whether the first send has been let through, by a 'ready' or by the
+    // timeout. Everything after that point is a reload asking to be re-fed.
+    let released = false;
+    let announce = null;
+
+    const subscription = webview.onDidReceiveMessage((message) => {
+        if (!message || message.command !== 'ready') return;
+        if (!released) {
+            released = true;
+            if (announce) announce();
+            return;
+        }
+        logger.appendLine(logPrefix + '>>> Webview reloaded; re-sending its layout');
+        Promise.resolve(onReconnect()).catch((err) => {
+            logger.appendLine(logPrefix + '>>> Re-send after a webview reload failed: ' + err.stack);
+        });
+    });
+
+    return {
+        async wait() {
+            if (released) return;
+            let timer;
+            await new Promise((resolve) => {
+                announce = resolve;
+                timer = setTimeout(() => {
+                    released = true;
+                    logger.appendLine(logPrefix +
+                        '>>> No "ready" from the webview after ' + READY_TIMEOUT_MS +
+                        'ms -- sending the layout anyway');
+                    resolve();
+                }, READY_TIMEOUT_MS);
+            });
+            clearTimeout(timer);
+            announce = null;
+        },
+        dispose() {
+            subscription.dispose();
+            // A tab closed while we were waiting: release the wait rather than
+            // leaving its timeout to hold the closure for the rest of the
+            // timeout. The caller checks for a disposed panel before sending.
+            released = true;
+            if (announce) {
+                const resolve = announce;
+                announce = null;
+                resolve();
+            }
+        }
+    };
+}
+
 module.exports = {
     logger,
     MAX_LAYOUT_BYTES,
     MAX_MARKER_BYTES,
     SETTLE_MS,
     SETTLE_TIMEOUT_MS,
+    READY_TIMEOUT_MS,
     baseName,
     decodeText,
     readText,
@@ -500,5 +585,6 @@ module.exports = {
     postLyp,
     postMarkers,
     buildWebviewHtml,
-    createLayoutLoader
+    createLayoutLoader,
+    createReadyGate
 };

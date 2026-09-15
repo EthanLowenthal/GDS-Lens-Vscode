@@ -21,7 +21,8 @@ const {
     postLyp,
     postMarkers,
     buildWebviewHtml,
-    createLayoutLoader
+    createLayoutLoader,
+    createReadyGate
 } = require('./shared.cjs');
 
 // Reused from the single editor's remembered-.lyp key: a .lyp is a styling
@@ -143,19 +144,6 @@ class CompareViewProvider {
             }
         );
 
-        try {
-            panel.webview.html = await buildWebviewHtml({
-                webview: panel.webview,
-                extensionUri: this.context.extensionUri,
-                htmlName: 'compare.html'
-            });
-        } catch (err) {
-            logger.appendLine('[FATAL CRASH ERROR] compare panel HTML: ' + err.stack);
-            vscode.window.showErrorMessage('GDS Lens: could not open comparison view: ' + err.message);
-            panel.dispose();
-            return;
-        }
-
         this.panels.add(panel);
         let disposed = false;
         const disposables = [];
@@ -210,6 +198,34 @@ class CompareViewProvider {
             disposables.push({ dispose: () => info.loader.dispose() });
         }
 
+        // Both layouts and the remembered .lyp, in one function because a
+        // webview that reloaded comes back holding none of it and asks for the
+        // lot again (see createReadyGate).
+        const sendEverything = async () => {
+            const [okLeft, okRight] = await Promise.all([
+                panes.left.loader.sendLayout(false),
+                panes.right.loader.sendLayout(false)
+            ]);
+            if (!okLeft && !okRight) return;  // both failed; errors already shown
+
+            // Re-apply the globally remembered .lyp, exactly as the single editor
+            // does: one viewer, one .lyp, and it styles both layouts because it is
+            // about how layers are drawn rather than about which layout they are
+            // in.
+            const savedLypUri = uriFromStored(this.context.globalState.get(LAST_LYP_PATH_KEY));
+            if (savedLypUri && !(await postLyp(post, savedLypUri))) {
+                await this.context.globalState.update(LAST_LYP_PATH_KEY, undefined);
+            }
+        };
+
+        // Listening before the HTML is assigned, which is what starts the page
+        // loading: the 'ready' it posts back is dropped if nothing is listening
+        // yet, and the layouts are not sent until it arrives. See
+        // createReadyGate -- the reason this view needs it even more than the
+        // single editor does is that it has two layouts to lose, not one.
+        const ready = createReadyGate({ webview: panel.webview, onReconnect: sendEverything });
+        disposables.push(ready);
+
         panel.webview.onDidReceiveMessage(async (message) => {
             if (message.command === 'reloadFile') {
                 // One viewer, one reload banner, two files behind it. Reload
@@ -261,20 +277,27 @@ class CompareViewProvider {
             // 'unloadMarkerFile' has nothing to forget here (see above).
         });
 
-        const [okLeft, okRight] = await Promise.all([
-            panes.left.loader.sendLayout(false),
-            panes.right.loader.sendLayout(false)
-        ]);
-        if (!okLeft && !okRight) return;  // both failed; errors already shown
-
-        // Re-apply the globally remembered .lyp, exactly as the single editor
-        // does: one viewer, one .lyp, and it styles both layouts because it is
-        // about how layers are drawn rather than about which layout they are
-        // in.
-        const savedLypUri = uriFromStored(this.context.globalState.get(LAST_LYP_PATH_KEY));
-        if (savedLypUri && !(await postLyp(post, savedLypUri))) {
-            await this.context.globalState.update(LAST_LYP_PATH_KEY, undefined);
+        try {
+            panel.webview.html = await buildWebviewHtml({
+                webview: panel.webview,
+                extensionUri: this.context.extensionUri,
+                htmlName: 'compare.html'
+            });
+        } catch (err) {
+            logger.appendLine('[FATAL CRASH ERROR] compare panel HTML: ' + err.stack);
+            vscode.window.showErrorMessage('GDS Lens: could not open comparison view: ' + err.message);
+            panel.dispose();
+            return;
         }
+
+        // Nothing is sent until the page says it can hear it. Safe to await
+        // here, unlike in the single editor: this panel is created by
+        // createWebviewPanel and mounted on VS Code's own account, so nothing
+        // about the page loading is waiting on this command's promise. The
+        // panel is free to be closed while we wait.
+        await ready.wait();
+        if (disposed) return;
+        await sendEverything();
     }
 }
 

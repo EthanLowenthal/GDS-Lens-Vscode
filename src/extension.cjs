@@ -16,7 +16,8 @@ const {
     postLyp,
     postMarkers,
     buildWebviewHtml,
-    createLayoutLoader
+    createLayoutLoader,
+    createReadyGate
 } = require('./shared.cjs');
 const { CompareViewProvider } = require('./compare-provider.cjs');
 
@@ -59,13 +60,14 @@ function activate(context) {
     context.subscriptions.push(
         vscode.window.registerCustomEditorProvider('GDS-Lens.editor', provider, {
             // Without this, VS Code destroys the webview's DOM whenever the tab
-            // is hidden and re-runs viewer.js from scratch when it comes back --
-            // but resolveCustomEditor() (the only thing that posts 'init' with
-            // the file bytes) runs once per editor, so the restored webview sits
-            // on "Loading layout..." forever. Keeping the context also means a
-            // tab switch doesn't re-parse the layout, which for a large GDS is
-            // the difference between instant and tens of seconds. The cost is
-            // that the wasm heap and GL context stay resident while hidden.
+            // is hidden and re-runs viewer.js from scratch when it comes back.
+            // A webview that comes back empty now says so and is re-fed (the
+            // 'ready' handshake, see createReadyGate), so that is no longer the
+            // permanently stuck editor it used to be -- but it is still a full
+            // re-parse on every tab switch, which for a large GDS is the
+            // difference between instant and tens of seconds. The cost of
+            // keeping the context is that the wasm heap and GL context stay
+            // resident while hidden.
             webviewOptions: { retainContextWhenHidden: true }
         })
     );
@@ -285,14 +287,6 @@ class GdsEditorProvider {
                 localResourceRoots: [this.context.extensionUri]
             };
 
-            // 2. Build the HTML: script tags pointed at webview URIs, the CSP
-            //    told where those come from, the parse worker's script embedded.
-            webviewPanel.webview.html = await buildWebviewHtml({
-                webview: webviewPanel.webview,
-                extensionUri: this.context.extensionUri,
-                htmlName: 'gds-lens.html'
-            });
-
             // Track this panel so the "Show Debug Tools" command can post to
             // it, and which layout it holds so "Compare Current Layout With..."
             // knows what "current" is.
@@ -321,6 +315,46 @@ class GdsEditorProvider {
 
             const loader = createLayoutLoader({ uri: document.uri, post });
             disposables.push({ dispose: () => loader.dispose() });
+
+            // Everything one open needs, in one function because a webview
+            // that reloaded needs exactly the same thing again: it comes back
+            // holding nothing at all (see createReadyGate).
+            const sendEverything = async () => {
+                if (!(await loader.sendLayout(false))) return;
+
+                // Re-apply the most recently loaded .lyp, if any. Safe to post now:
+                // viewer.js's 'lypLoaded' handler waits on the wasm module, and the
+                // parsed styling persists until the GDS geometry finishes loading
+                // and picks it up. If the file has since moved/been deleted, drop
+                // the stale remembered location so it stops trying.
+                const savedLypUri = uriFromStored(this.context.globalState.get(LAST_LYP_PATH_KEY));
+                if (savedLypUri && !(await postLyp(post, savedLypUri))) {
+                    await this.context.globalState.update(LAST_LYP_PATH_KEY, undefined);
+                }
+
+                // Re-apply this GDS file's remembered marker database, if any
+                // (per-GDS, unlike the .lyp above). Same ordering guarantee: the
+                // webview parses and holds the markers until geometry arrives.
+                const markerMap = this.context.workspaceState.get(MARKER_PATHS_KEY) || {};
+                const savedMarkerUri = uriFromStored(lookupByUri(markerMap, document.uri));
+                if (savedMarkerUri && !(await postMarkers(post, savedMarkerUri))) {
+                    await this.updateMarkerMap((map) => { deleteByUri(map, document.uri); });
+                }
+                // This layout's saved views. Sent whether or not there are any --
+                // the viewer's list is whatever arrives here, so an empty one is
+                // the message that says "none saved".
+                post({ type: 'namedViews', views: this.namedViewsFor(document.uri) });
+            };
+
+            // 2. Start listening, before the HTML rather than after it.
+            //    Assigning webview.html is what starts the page loading, and
+            //    the 'ready' it posts back the moment it can receive messages
+            //    is dropped outright if nothing is listening for it yet.
+            const ready = createReadyGate({
+                webview: webviewPanel.webview,
+                onReconnect: sendEverything
+            });
+            disposables.push(ready);
 
             webviewPanel.webview.onDidReceiveMessage(async (message) => {
                 if (message.command === 'reloadFile') {
@@ -396,31 +430,32 @@ class GdsEditorProvider {
                 }
             });
 
+            // 3. Build the HTML: script tags pointed at webview URIs, the CSP
+            //    told where those come from, the parse worker's script embedded.
+            webviewPanel.webview.html = await buildWebviewHtml({
+                webview: webviewPanel.webview,
+                extensionUri: this.context.extensionUri,
+                htmlName: 'gds-lens.html'
+            });
             logger.appendLine('    cspSource: ' + webviewPanel.webview.cspSource);
-            if (!(await loader.sendLayout(false))) return;
 
-            // Re-apply the most recently loaded .lyp, if any. Safe to post now:
-            // viewer.js's 'lypLoaded' handler waits on the wasm module, and the
-            // parsed styling persists until the GDS geometry finishes loading
-            // and picks it up. If the file has since moved/been deleted, drop
-            // the stale remembered location so it stops trying.
-            const savedLypUri = uriFromStored(this.context.globalState.get(LAST_LYP_PATH_KEY));
-            if (savedLypUri && !(await postLyp(post, savedLypUri))) {
-                await this.context.globalState.update(LAST_LYP_PATH_KEY, undefined);
-            }
-
-            // Re-apply this GDS file's remembered marker database, if any
-            // (per-GDS, unlike the .lyp above). Same ordering guarantee: the
-            // webview parses and holds the markers until geometry arrives.
-            const markerMap = this.context.workspaceState.get(MARKER_PATHS_KEY) || {};
-            const savedMarkerUri = uriFromStored(lookupByUri(markerMap, document.uri));
-            if (savedMarkerUri && !(await postMarkers(post, savedMarkerUri))) {
-                await this.updateMarkerMap((map) => { deleteByUri(map, document.uri); });
-            }
-            // This layout's saved views. Sent whether or not there are any --
-            // the viewer's list is whatever arrives here, so an empty one is
-            // the message that says "none saved".
-            post({ type: 'namedViews', views: this.namedViewsFor(document.uri) });
+            // 4. Send once the page can hear it -- deliberately not awaited.
+            //    VS Code does not put the webview into the editor until this
+            //    method's promise resolves: WebviewEditor.setInput awaits
+            //    input.resolve() (which is this) and only then claimWebview(),
+            //    which is what mounts the iframe. So waiting here for the
+            //    'ready' would hold up the very thing that produces it -- a
+            //    blank editor until the gate times out, and then a send into
+            //    exactly the race the handshake exists to close. The tab is
+            //    also free to close while the page loads, which leaves nothing
+            //    worth sending.
+            ready.wait()
+                .then(() => (disposed ? undefined : sendEverything()))
+                .catch((err) => {
+                    logger.appendLine('[FATAL CRASH ERROR] ' + err.stack);
+                    post({ type: 'loadError', message: err.message });
+                    vscode.window.showErrorMessage('GDSII Viewer Error: ' + err.message);
+                });
         } catch (err) {
             logger.appendLine('[FATAL CRASH ERROR] ' + err.stack);
             // Best-effort: if the webview got far enough to render, it's
