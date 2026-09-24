@@ -1,5 +1,23 @@
 # Change Log
 
+## [1.9.0] - 2026-09-23
+
+- **Ports are off by default.** Turn them on with **Display > Ports**. The
+  **Ports** folder lists the top cell's ports either way; click one to center
+  on it.
+- **Fewer port arrows zoomed out.** The top cell's ports are drawn at every
+  zoom. Ports inside placed cells are drawn once 3,000 or fewer are in view.
+  Before, a full photonics die was covered in arrows, because every waveguide
+  has a port at each end.
+- **Fixed: whole blocks with no ports** on layouts with more than 200,000 port
+  placements. The viewer stopped collecting ports partway through the cell
+  tree. The limit is now 1,000,000, and past it the viewer keeps an even
+  sample across the die.
+- **Fixed: "Ports (0)"** when every port is inside a placed cell. The folder
+  now says how many ports are inside cells.
+- The ruler stays under the pointer on large layouts, and no longer lags it
+  in measure mode. (gds-lens 1.5.0.)
+
 ## [1.8.1] - 2026-09-17
 
 - **Large layouts draw at interactive speed.** Three changes in the viewer,

@@ -68,7 +68,7 @@ remembered per layout.
 | --- | --- |
 | **Infill** | Hatched layer fill on or off |
 | **Text** | Draw the layout's `TEXT` labels in their layer's color. Off by default. |
-| **Ports** | Draw ports stored in the layout's metadata. On by default. |
+| **Ports** | Draw ports stored in the layout's metadata. Off by default. |
 | **Merge Overlaps** | Draw each layer as the union of its polygons, without internal edges |
 | **Grid** | Reference grid at a round nm, µm, or mm step that follows the zoom |
 | **Load .lyp File** | Custom layer colors |
@@ -108,8 +108,10 @@ remembered per layout.
 
 Each port is drawn as a bar across its width with an arrow in the direction it
 faces: orange for optical, green for electrical, blue for other types. The
-**Ports** folder lists the top cell's ports; click one to center on it. Ports
-are read from the KLayout metadata that gdsfactory 8 and kfactory write into
+**Ports** folder lists the top cell's ports; click one to center on it. The
+overlay is off until you turn on **Display > Ports**. The top cell's ports are
+drawn at every zoom, and ports inside placed cells are drawn once you zoom in
+far enough that 3,000 or fewer are in view. Ports are read from the KLayout metadata that gdsfactory 8 and kfactory write into
 GDSII and OASIS files. Files without it look unchanged.
 
 ### Reload
