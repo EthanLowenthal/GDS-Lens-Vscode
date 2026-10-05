@@ -333,9 +333,15 @@ in both tokens. That file is gitignored and excluded from the packaged `.vsix`
 via `.vscodeignore`; `scripts/with-env.sh` loads it so no token ever lands in
 shell history.
 
-- `VSCE_PAT` - only for publishing to the Marketplace by hand, which CI now
-  does instead (see [Marketplace sign-in](#marketplace-sign-in)). Azure DevOps
-  retires global PATs on 1 December 2026.
+- `VSCE_PAT` - an Azure DevOps personal access token, scoped **Marketplace →
+  Manage**, with organization set to **All accessible organizations**. Azure
+  caps PAT lifetime at one year, so this expires and has to be reissued.
+
+  > **Deadline: 1 December 2026.** Azure DevOps retires *global* PATs on that
+  > date - and "All accessible organizations" is exactly what makes this one
+  > global, so `VSCE_PAT` publishing stops working then. See
+  > [Migrating off `VSCE_PAT`](#migrating-off-vsce_pat) below. `OVSX_PAT` is an
+  > Eclipse token and is unaffected.
 - `OVSX_PAT` - from your open-vsx.org profile. Before the first publish you
   must sign the Eclipse Publisher Agreement (with an Eclipse account whose
   email matches your GitHub account) and claim the namespace, which has to
@@ -351,56 +357,73 @@ shell history.
 
 ### Releasing
 
-Bump `version` in `package.json`, move the `[Unreleased]` notes in
-`CHANGELOG.md` under that version, commit, and push a matching tag:
+Bump `version` in `package.json`, update `CHANGELOG.md`, make sure the
+`gds-lens` build you are packaging against is current (`npm run compile` copies
+whatever is in that package's `dist/inline-wasm/`, so a stale library build
+ships silently), then:
 
 ```sh
-git tag v1.10.0 && git push origin main v1.10.0
+npm run package       # -> GDS-Lens-<version>.vsix
+npm run publish:all   # package + both registries
 ```
 
-[`.github/workflows/publish.yml`](.github/workflows/publish.yml) builds from
-the tag with the `gds-lens` version in `package-lock.json`, packages the
-`.vsix`, and publishes it to the Marketplace. The tag must match `version`, or
-the run fails before publishing. Open VSX is still published by hand:
-
-```sh
-npm run package && npm run publish:ovsx
-```
+`publish:vsce` and `publish:ovsx` can be run individually; both publish the
+prebuilt `GDS-Lens-<version>.vsix` rather than repackaging, so the two
+registries get byte-identical artifacts.
 
 Marketplace metadata (`displayName`, `description`, `categories`, `keywords`,
 `galleryBanner`) only takes effect on the next publish - editing it without
 shipping a new version changes nothing on the listing.
 
-### Marketplace sign-in
+### Migrating off `VSCE_PAT`
 
-The workflow signs in to Azure as a user-assigned managed identity, using
-GitHub's OIDC token, and publishes with `vsce publish --azure-credential`. No
-Marketplace token is stored. This replaces `VSCE_PAT`: Azure DevOps retires
-global PATs on 1 December 2026, and `vsce publish --oidc` fails until the
-Marketplace ships the trusted-publishing policy it depends on.
+Global PATs stop working on 1 December 2026. Two replacements exist; only the
+Marketplace side is affected, so Open VSX keeps using `OVSX_PAT` either way.
 
-One-time setup:
+**`vsce publish --oidc` - the intended target, but NOT YET RELEASED.** As of
+vsce 3.9.2 this flag does not exist (`unknown option '--oidc'`); it is
+documented only on the vsce `main` branch README. Re-check with
+`npx @vscode/vsce publish --help | grep oidc` before planning around it.
 
-1. In the Azure portal, create a **Managed Identity** (user-assigned) in any
-   subscription and resource group. It is free. An App Registration does not
-   work: it signs in, then the Marketplace rejects it.
-2. On the identity, add a **Federated credential**: scenario *GitHub Actions
-   deploying Azure resources*, organization `EthanLowenthal`, repository
-   `GDS-Lens-Vscode`, entity type **Environment**, environment
-   `marketplace-publish`. Branch or tag entities would need a new credential
-   per release.
-3. Save the identity's **Client ID** and **Tenant ID** as the repo secrets
-   `AZURE_CLIENT_ID` and `AZURE_TENANT_ID`.
-4. Run the **Publish** workflow by hand (it defaults to a dry run). The
-   "Print the identity's Azure DevOps ID" step prints an ID. On
-   [marketplace.visualstudio.com/manage](https://marketplace.visualstudio.com/manage),
-   open the `ethml` publisher's **Members** and add that ID as a
-   **Contributor**. The client ID and object ID are not accepted there.
-5. Run the dry run again. "Verify publish access" passing means the next tag
-   publishes.
+When it ships, it publishes from GitHub Actions with no stored Marketplace
+secret at all: the workflow requests a GitHub OIDC token for the
+`marketplace.visualstudio.com` audience and exchanges it for a short-lived
+credential. Setup is a trusted-publishing policy on the Marketplace naming this
+repo and workflow, plus `id-token: write` on the job:
 
-The GitHub environment `marketplace-publish` only accepts runs from `main` and
-`v*` tags.
+```yaml
+permissions:
+  contents: read
+  id-token: write
+steps:
+  - uses: actions/checkout@v4
+  - uses: actions/setup-node@v4
+    with:
+      node-version: 22
+  - run: npm ci
+  - run: npx @vscode/vsce publish --oidc
+```
+
+It deliberately does *not* fall back to a PAT if the exchange fails. The
+tradeoff is that releases must run in CI - `--oidc` cannot work from a laptop,
+since there is no Actions token to exchange. Note that moving releases into CI
+is not just a matter of swapping the auth flag: the viewer payload comes from
+the `gds-lens` package, so a CI runner needs that package installed from the
+registry rather than from the local `file:` path used in development.
+
+**`vsce publish --azure-credential`.** Available today, and the only documented
+replacement. Entra ID via workload identity federation: an Azure DevOps service
+connection, a user-assigned managed identity in Azure with a Reader role,
+federated credentials exchanged between the two, the identity added as a
+Contributor member of the Marketplace publisher, and an Azure Pipelines job that
+mints an Entra token. It assumes an Azure subscription and Azure Pipelines,
+neither of which this project uses - disproportionate for a solo extension.
+
+**Plan of record:** stay on `VSCE_PAT` for now, and re-check `--oidc` around
+Q3 2026. Microsoft needs a GitHub Actions story before retiring PATs on
+1 December 2026, and `--oidc` already exists on `main`, so it is very likely to
+ship in time. If it has not shipped by ~November 2026, fall back to
+`--azure-credential`.
 
 ## Linting
 
