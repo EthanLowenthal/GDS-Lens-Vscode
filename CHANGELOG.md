@@ -1,5 +1,19 @@
 # Change Log
 
+## [Unreleased]
+
+- **Installs on VS Code 1.85 and later**, down from 1.125. Editors built on an
+  older VS Code, such as Cursor, Windsurf and VSCodium, can now install it from
+  Open VSX.
+- Commands are grouped under **GDS Lens** in the Command Palette, for example
+  **GDS Lens: Go to Coordinate**. They were titled `GDSLens: ...`.
+- The README describes the current instancing rule and the reprojection used
+  while panning and zooming large layouts.
+- The README states measured load limits in polygons: 820M once flattened
+  for a layout of repeated cells, 10M flat rectangles, or 2.3M flat 40-vertex
+  curves. It used to quote 115M polygons in 2 GB, measured under the old
+  instancing rule.
+
 ## [1.9.0] - 2026-09-23
 
 - **Ports are off by default.** Turn them on with **Display > Ports**. The

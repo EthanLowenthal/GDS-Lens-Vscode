@@ -1,6 +1,6 @@
 {
   "name": "GDS-Lens",
-  "displayName": "GDS Lens — GDSII & OASIS Layout Viewer",
+  "displayName": "GDS Lens: GDSII & OASIS Layout Viewer",
   "description": "GPU-accelerated GDSII and OASIS viewer. C++ parser and WebGL2 renderer in WebAssembly. 100M+ polygon layouts, photonic ports with arrows, .lyp colors, ruler, DRC/LVS markers. Runs on vscode.dev.",
   "version": "1.9.0",
   "icon": "images/logo.png",
@@ -45,7 +45,7 @@
     "theme": "dark"
   },
   "engines": {
-    "vscode": "^1.125.0"
+    "vscode": "^1.85.0"
   },
   "main": "./dist/extension.js",
   "browser": "./dist/extension.js",
@@ -72,7 +72,7 @@
   },
   "devDependencies": {
     "@types/node": "24.x",
-    "@types/vscode": "^1.125.0",
+    "@types/vscode": "1.85.0",
     "@vscode/test-web": "^0.0.81",
     "@xmldom/xmldom": "^0.9.10",
     "esbuild": "^0.28.2",
@@ -92,23 +92,28 @@
     "commands": [
       {
         "command": "GDS-Lens.goToCoordinate",
-        "title": "GDSLens: Go to Coordinate"
+        "title": "Go to Coordinate",
+        "category": "GDS Lens"
       },
       {
         "command": "GDS-Lens.showDebugTools",
-        "title": "GDSLens: Toggle Debug Tools"
+        "title": "Toggle Debug Tools",
+        "category": "GDS Lens"
       },
       {
         "command": "GDS-Lens.toggleAutoReload",
-        "title": "GDSLens: Toggle Auto-Reload on Change"
+        "title": "Toggle Auto-Reload on Change",
+        "category": "GDS Lens"
       },
       {
         "command": "GDS-Lens.compareLayouts",
-        "title": "GDSLens: Compare Layouts"
+        "title": "Compare Layouts",
+        "category": "GDS Lens"
       },
       {
         "command": "GDS-Lens.compareWithCurrent",
-        "title": "GDSLens: Compare Current Layout With...",
+        "title": "Compare Current Layout With...",
+        "category": "GDS Lens",
         "icon": "$(git-compare)"
       }
     ],

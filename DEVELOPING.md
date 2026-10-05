@@ -257,14 +257,27 @@ module, so everything has to fit in one 4 GB address space
 (`-sMAXIMUM_MEMORY` in the library's `src/wasm/CMakeLists.txt`, Emscripten's default being
 only 2 GB). What that buys, measured against generated stress layouts:
 
-- **Flat geometry is the expensive case.** ~1 KB per polygon end to end
-  (gdstk polygon + triangulated vertices + the typed arrays handed to JS), so
-  a couple of million top-level polygons is the practical ceiling.
-- **Hierarchy is nearly free.** A cell placed at least `kInstanceThreshold`
-  (8) times anywhere in the design becomes a GPU instance batch - 24 bytes per
-  placement instead of a full geometry copy. A hierarchy that flattens to
-  115M polygons loads in ~2 GB; the same 4 GB budget is exhausted somewhere
-  under 1G.
+- **Distinct geometry is the expensive case.** Every polygon that is not
+  part of an instanced cell is stored and triangulated, so the limit is set by
+  vertex count: 10M flat rectangles load, but only 2.3M flat 40-vertex curves.
+- **Instanced cells are cheap.** A cell is instanced when its extra flattened
+  copies would add more than `kInstanceThreshold` (250,000) points, within a
+  design-wide `kFlattenBudget` (15M points) for what flattening may add; see the
+  comment above them in the library's `renderer.cpp`. An instanced placement
+  costs an affine transform rather than a copy, so the limit is placement
+  count: 100 cells of 40 rectangles load at 20.5M placements, which is 820M
+  polygons once flattened, and fail at 21.3M.
+
+The figures above are from `npm run bench` against gds-lens 1.5.0 on layouts
+from the library's `scripts/make-stress-gds.mjs`, bisected to within 3%:
+
+    node scripts/make-stress-gds.mjs reuse.gds  --routes=0 --vias=0 --cells=100 --cell-polys=40 --placements=205000
+    node scripts/make-stress-gds.mjs rects.gds  --routes=0 --vias=10250000
+    node scripts/make-stress-gds.mjs curves.gds --routes=2330000 --route-verts=40 --vias=0
+
+A generated layout of many distinct small cells is bounded by the flat limits,
+not the instanced one: 240,000 cells of 40 rectangles, placed 12 times each,
+store 9.6M distinct polygons and fail to load.
 
 A gzipped layout is expanded before any of this, in the extension host
 (`gds-lens/layout-bytes`), and the ceilings above apply to what it expands *to*,

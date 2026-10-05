@@ -1,4 +1,4 @@
-// "GDSLens: Compare Layouts" -- two layouts in one webview panel, overlaid
+// "GDS Lens: Compare Layouts" -- two layouts in one webview panel, overlaid
 // through one camera with one control panel over both.
 //
 // There is no sync controller here, and no second viewer for one to sync to.
@@ -81,7 +81,7 @@ class CompareViewProvider {
         return this.openCompare(left, right);
     }
 
-    // "GDSLens: Compare Current Layout With..." -- the other way in, from a
+    // "GDS Lens: Compare Current Layout With..." -- the other way in, from a
     // layout you already have open rather than from a selection in the
     // Explorer. `currentUri` is the open layout: the resource VS Code hands a
     // command invoked from the editor's title menu, or (from the command

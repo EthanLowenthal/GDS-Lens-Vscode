@@ -26,7 +26,7 @@ Drag to pan. Scroll to zoom.
 
 ## Features
 
-- **Large layouts**: GPU instancing draws repeated cells once. 115 million flattened polygons in 2 GB, a 37 MB file on screen in 0.25 s.
+- **Large layouts**: GPU instancing draws repeated cells once. Up to 820M polygons once flattened, a 37 MB file on screen in 0.25 s, and smooth panning and zooming on a 127M polygon layout.
 - **Ports**: photonic and electrical ports stored in the layout's metadata are drawn with orientation arrows, colored by type, and listed for the top cell.
 - **Layer panel**: automatic colors, per-layer toggles, filter, solo, shape counts, bulk show/hide. Load a KLayout `.lyp` to match your PDK colors.
 - **Hierarchy**: browse the cell tree, frame any cell, and outline every placement of it.
@@ -92,7 +92,7 @@ Finished rulers stay on the canvas until you clear them with `Esc`.
 
 The pointer coordinate is shown below the scale bar in microns. To copy it,
 right-click the layout and choose **Copy coordinate**. To jump to a coordinate,
-run **GDSLens: Go to Coordinate** and paste it. Units `nm`, `um`, `µm`, and
+run **GDS Lens: Go to Coordinate** and paste it. Units `nm`, `um`, `µm`, and
 `mm` are accepted, as are the formats DRC reports use, such as `(x, y)` or
 `x=…, y=…`. A crosshair marks where you landed.
 
@@ -123,55 +123,69 @@ the camera and layer visibility. Click **Always** to reload without asking.
 
 Two ways in:
 
-- With a layout already open, use the compare button in the editor's title bar,
-  or **GDSLens: Compare Current Layout With...** from the command palette, and
-  pick the file to compare it against. The open layout is A, the one you pick
-  is B. The picker starts in the open layout's own folder, which is also what
-  keeps it on the right machine when you are working over SSH, in a container,
-  in a Codespace or on vscode.dev: the dialog browses wherever the extension
-  host runs, which is where the file you have open lives.
+- With a layout open, use the compare button in the editor's title bar, or run
+  **GDS Lens: Compare Current Layout With...**, and pick the file to compare
+  against. The open layout is A, the one you pick is B. The picker opens in
+  the open layout's folder.
 - Or select two layout files in the Explorer, right-click, and choose **Compare
   Layouts**. Running that command with nothing selected asks for both files.
 
-Both open in one viewer, drawn on top of each other through one camera. The
-panel grows a **Compare** folder holding:
+Both open in one viewer, overlaid through one camera, and the panel gains a
+**Compare** folder:
 
-- **A ↔ B**, a crossfade. Drag it to either end to see one layout on its own,
-  or leave it in the middle to overlay them. Flicking between the ends is the
-  fastest way to see what moved.
-- **Tint sources**, off by default, which nudges each layout toward its own
-  hue. Two revisions are the same colours in the same places, so at a 50/50
-  blend they can look like one layout; this is how to tell them apart without
-  giving up the overlay.
-- **Highlight differences**, which marks where the two disagree, layer by
-  layer: red where only the first has geometry, green where only the second
-  does. It works at the resolution you are viewing, so zoom in to resolve a
-  smaller difference. It finds the places to look; it is not a geometric XOR
-  and it will not give you an area.
+- **A ↔ B** crossfades between them. Either end shows one layout on its own,
+  the middle overlays both. Flicking between the ends shows what moved.
+- **Tint sources**, off by default, shifts each layout toward its own hue, so
+  two revisions with the same colors can be told apart in the overlay.
+- **Highlight differences** marks, layer by layer, where the two disagree: red
+  where only A has geometry, green where only B does. It works at the
+  resolution you are viewing, so zoom in to resolve smaller differences. It
+  shows where to look; it is not a geometric XOR and does not report an area.
 
 The layer list shows both layouts' layers, marked **A** or **B** where only
-one of them has it — which is how a layer added or removed between revisions
-shows up at all. The hierarchy browser roots both designs' cell trees, and
-cell and label searches cover both, with the same marks on the results.
+one of them has it, so a layer added or removed between revisions shows up as
+a row. The hierarchy browser roots both cell trees, and cell and label search
+covers both, with the same marks on the results.
 
-Everything else is single, because there is only one viewer: one camera, one
-set of rulers, one `.lyp`, one marker database. The reload banner names
-whichever file changed on disk, and reloading clears rulers, the same as
-reloading a single layout does.
+Everything else is single: one camera, one set of rulers, one `.lyp`, one
+marker database. The reload banner names whichever file changed on disk, and
+reloading clears rulers, as it does for a single layout.
 
 ## Performance
 
 Parsing, flattening, and triangulation run in a WebAssembly worker, off the
 main thread, so the editor stays responsive while a file loads. Drawing is
-WebGL2 on the GPU, with one vertex buffer per layer and instancing for any cell
-placed eight or more times. Measured on generated stress layouts and a 37 MB test
-layout:
+WebGL2 on the GPU, with one vertex buffer per layer.
+
+A cell is GPU-instanced based on what instancing saves, not on how often it is
+placed. Instancing avoids storing a flattened copy of every placement, but
+costs a draw call per cell per layer in every frame. A cell is instanced when
+its flattened copies would take a lot of memory, so a cell placed 100,000
+times still instances, while a small cell placed a dozen times is flattened
+into its layer's buffer.
+
+Panning and zooming a very large layout reprojects the last render instead of
+redrawing the geometry, then does one real render when the camera stops. The
+frame it settles on is the same as one drawn without reprojection. Merge
+Overlaps and the compare difference highlight are not covered and redraw
+every frame.
+
+Measured on generated stress layouts and a 37 MB test layout:
 
 - The 37 MB GDSII file is on screen in about 0.25 s.
-- A hierarchy that flattens to 115 million polygons loads in about 2 GB of
-  memory. The 4 GB address space of 32-bit wasm is the ceiling.
-- Flat geometry costs about 1 KB per top-level polygon, so a few million
-  unreferenced polygons is the practical limit.
+- Dragging a 127M polygon layout takes 8.4 ms a frame, down from 606 ms.
+- A test chip of 2.5M polygons in 8,000 distinct cells draws a frame in under
+  1 ms, down from 108 ms, and loads in 1.27 s, down from 4.35 s.
+
+Everything is held in the 4 GB address space of 32-bit wasm, which sets these
+limits on what loads. The limit depends on how much of the layout is distinct
+geometry:
+
+| Layout | Limit |
+| --- | --- |
+| Repeated cells (100 cells of 40 rectangles, placed 20M times) | 820M polygons once flattened |
+| Flat rectangles | 10M polygons |
+| Flat 40-vertex curves, like waveguide routing | 2.3M polygons |
 
 To measure your own files, run `npm run bench -- <file>...`. See
 [Benchmarking](DEVELOPING.md#benchmarking).
@@ -193,11 +207,11 @@ To measure your own files, run `npm run bench -- <file>...`. See
 
 | Command | Action |
 | --- | --- |
-| **GDSLens: Go to Coordinate** | Center the view on a pasted coordinate |
-| **GDSLens: Compare Layouts** | Open two layouts overlaid in one viewer, with a crossfade and a difference highlight |
-| **GDSLens: Compare Current Layout With...** | Compare the layout you have open against another you pick |
-| **GDSLens: Toggle Auto-Reload on Change** | Turn automatic reloading on or off (the `GDS-Lens.autoReload` setting) |
-| **GDSLens: Toggle Debug Tools** | Show or hide the render stats readout and debug log |
+| **GDS Lens: Go to Coordinate** | Center the view on a pasted coordinate |
+| **GDS Lens: Compare Layouts** | Open two layouts overlaid in one viewer, with a crossfade and a difference highlight |
+| **GDS Lens: Compare Current Layout With...** | Compare the layout you have open against another you pick |
+| **GDS Lens: Toggle Auto-Reload on Change** | Turn automatic reloading on or off (the `GDS-Lens.autoReload` setting) |
+| **GDS Lens: Toggle Debug Tools** | Show or hide the render stats readout and debug log |
 
 ## Release notes
 

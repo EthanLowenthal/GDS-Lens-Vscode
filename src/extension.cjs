@@ -52,7 +52,7 @@ function activate(context) {
     // Deliberately not logger.show(): revealing the panel on activation takes
     // the bottom dock away from whatever was in it (a terminal, usually) every
     // time a layout is opened. The log is still written and is one click away
-    // under Output > GDSII Debugger, and "GDSLens: Toggle Debug Tools" opens
+    // under Output > GDSII Debugger, and "GDS Lens: Toggle Debug Tools" opens
     // the in-viewer log for the half of the story the host cannot see.
     logger.appendLine(">>> GDSII Extension Core Spinning Up (wasm parsing + rendering)...");
 
@@ -72,7 +72,7 @@ function activate(context) {
         })
     );
 
-    // "GDSLens: Toggle Debug Tools" -- shows/hides the upper-left readout and
+    // "GDS Lens: Toggle Debug Tools" -- shows/hides the upper-left readout and
     // the debug-log panel/button (all hidden by default) in every open GDS
     // viewer.
     context.subscriptions.push(
@@ -81,7 +81,7 @@ function activate(context) {
         })
     );
 
-    // "GDSLens: Go to Coordinate" -- centers the active viewer on a pasted
+    // "GDS Lens: Go to Coordinate" -- centers the active viewer on a pasted
     // coordinate. A command rather than a permanent row in the viewer's panel:
     // coordinates arrive from outside the viewer (a DRC report, a colleague's
     // message, a generator's log), so this is reached for occasionally and with
@@ -109,7 +109,7 @@ function activate(context) {
         })
     );
 
-    // "GDSLens: Compare Layouts" -- opens two layouts side by side with a
+    // "GDS Lens: Compare Layouts" -- opens two layouts side by side with a
     // synced camera, layer visibility, markers and rulers (see
     // compare-provider.cjs). `uri`/`uris` are what VS Code hands a command
     // invoked from the Explorer's context menu over a multi-selection: the
@@ -122,7 +122,7 @@ function activate(context) {
         })
     );
 
-    // "GDSLens: Compare Current Layout With..." -- the same view reached from a
+    // "GDS Lens: Compare Current Layout With..." -- the same view reached from a
     // layout already open instead of from a pair selected in the Explorer,
     // which is the way round it usually comes up: you are reading a layout,
     // and *then* want to know what changed. `uri` is what VS Code hands a
