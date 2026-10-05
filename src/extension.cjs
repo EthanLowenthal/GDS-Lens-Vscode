@@ -13,6 +13,8 @@ const {
     deleteByUri,
     autoReloadEnabled,
     setAutoReload,
+    postDisplayPrefs,
+    saveDisplayPrefs,
     postLyp,
     postMarkers,
     buildWebviewHtml,
@@ -320,6 +322,8 @@ class GdsEditorProvider {
             // that reloaded needs exactly the same thing again: it comes back
             // holding nothing at all (see createReadyGate).
             const sendEverything = async () => {
+                // First, so the toggles are set before the layout is drawn.
+                postDisplayPrefs(this.context, post);
                 if (!(await loader.sendLayout(false))) return;
 
                 // Re-apply the most recently loaded .lyp, if any. Safe to post now:
@@ -378,6 +382,10 @@ class GdsEditorProvider {
                 }
                 if (message.command === 'saveNamedViews') {
                     await this.setNamedViews(document.uri, message.views);
+                    return;
+                }
+                if (message.command === 'saveDisplay') {
+                    await saveDisplayPrefs(this.context, message.prefs);
                     return;
                 }
                 if (message.command === 'setAutoReload') {

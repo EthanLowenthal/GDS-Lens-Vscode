@@ -123,6 +123,29 @@ function setAutoReload(enabled) {
         .update('autoReload', enabled, vscode.ConfigurationTarget.Global);
 }
 
+// globalState key holding the viewer's Display toggles (Infill, Text, Ports,
+// Merge Overlaps, Grid), saved whenever the user flips one and sent to every
+// viewer opened afterwards. Global for the same reason as the .lyp: they are
+// about how layouts are drawn, not about one layout.
+const DISPLAY_PREFS_KEY = 'GDS-Lens.displayPrefs';
+const DISPLAY_PREF_NAMES = ['showInfill', 'showText', 'showPorts', 'mergeOverlaps', 'showGrid'];
+
+// Sent whether or not anything is stored: the viewer's loadDisplay resolves
+// on this message, and null leaves its defaults alone.
+function postDisplayPrefs(context, post) {
+    post({ type: 'displayPrefs', prefs: context.globalState.get(DISPLAY_PREFS_KEY) || null });
+}
+
+// Only known names with boolean values are kept, so a webview cannot grow the
+// stored blob with anything else.
+function saveDisplayPrefs(context, prefs) {
+    const kept = {};
+    for (const name of DISPLAY_PREF_NAMES) {
+        if (prefs && typeof prefs[name] === 'boolean') kept[name] = prefs[name];
+    }
+    return context.globalState.update(DISPLAY_PREFS_KEY, kept);
+}
+
 function formatBytes(bytes) {
     if (bytes >= 1024 ** 3) return (bytes / 1024 ** 3).toFixed(1) + ' GB';
     if (bytes >= 1024 ** 2) return (bytes / 1024 ** 2).toFixed(0) + ' MB';
@@ -581,6 +604,8 @@ module.exports = {
     deleteByUri,
     autoReloadEnabled,
     setAutoReload,
+    postDisplayPrefs,
+    saveDisplayPrefs,
     formatBytes,
     postLyp,
     postMarkers,

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- **Display toggles are remembered.** Infill, Text, Ports, Merge Overlaps and
+  Grid start the way you last set them, in every layout and in Compare. Text
+  turning on to show a label search's result does not change the remembered
+  setting. (gds-lens, unreleased.)
 - **Installs on VS Code 1.85 and later**, down from 1.125. Editors built on an
   older VS Code, such as Cursor, Windsurf and VSCodium, can now install it from
   Open VSX.

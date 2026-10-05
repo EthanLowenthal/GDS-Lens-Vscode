@@ -35,6 +35,7 @@
     let pendingMarkers = null;
     let pendingViewName = null;
     let pendingViews = null;
+    let pendingDisplay = null;
     let viewer = null;
     // viewer.js calls connect() as it finishes loading, so in practice it is
     // always set before the host posts anything. Queue rather than assume it:
@@ -76,6 +77,13 @@
             pendingViews = resolve;
         }),
         saveViews: (views) => post({ command: "saveNamedViews", views }),
+
+        // The Display toggles, global rather than per layout. The host sends
+        // them on every open, before the layout, so this resolves from that.
+        loadDisplay: () => new Promise((resolve) => {
+            pendingDisplay = resolve;
+        }),
+        saveDisplay: (prefs) => post({ command: "saveDisplay", prefs }),
 
         // Asked for by the extension host rather than in the page: a webview
         // has no prompt() to call, and the host's input box validates as you
@@ -199,6 +207,16 @@
                     resolve(message.views);
                 } else if (viewer && viewer.setNamedViews) {
                     viewer.setNamedViews(message.views);
+                }
+                break;
+            case "displayPrefs":
+                // Answers the viewer's loadDisplay at mount. One arriving
+                // with nothing waiting is dropped: by then the panel holds
+                // what the user has set since.
+                if (pendingDisplay) {
+                    const resolve = pendingDisplay;
+                    pendingDisplay = null;
+                    resolve(message.prefs);
                 }
                 break;
             case "saveViewName":

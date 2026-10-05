@@ -18,6 +18,8 @@ const {
     baseName,
     uriFromStored,
     setAutoReload,
+    postDisplayPrefs,
+    saveDisplayPrefs,
     postLyp,
     postMarkers,
     buildWebviewHtml,
@@ -202,6 +204,7 @@ class CompareViewProvider {
         // webview that reloaded comes back holding none of it and asks for the
         // lot again (see createReadyGate).
         const sendEverything = async () => {
+            postDisplayPrefs(this.context, post);
             const [okLeft, okRight] = await Promise.all([
                 panes.left.loader.sendLayout(false),
                 panes.right.loader.sendLayout(false)
@@ -236,6 +239,10 @@ class CompareViewProvider {
                 const stale = Object.values(panes).filter((pane) => pane.stale);
                 const targets = stale.length ? stale : Object.values(panes);
                 await Promise.all(targets.map((pane) => pane.loader.sendLayout(true)));
+                return;
+            }
+            if (message.command === 'saveDisplay') {
+                await saveDisplayPrefs(this.context, message.prefs);
                 return;
             }
             if (message.command === 'setAutoReload') {

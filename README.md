@@ -75,6 +75,9 @@ remembered per layout.
 | **Load Marker File** | DRC/LVS marker database |
 | **Reset View** | Refit the layout to the window |
 
+Infill, Text, Ports, Merge Overlaps and Grid are remembered: the next layout
+you open starts with them set the way you left them.
+
 ### Saved views
 
 Click **Save Current View** to store the camera and layer visibility under a
