@@ -175,10 +175,12 @@ async function postLyp(post, uri) {
 // run to hundreds of MB and are routinely stored compressed, and the marker
 // text crosses to the webview as a string, so this is the last place that can
 // deal in bytes. Returns false if unreadable so callers can drop a stale
-// remembered location.
-async function postMarkers(post, uri) {
+// remembered location. `raw` is the file's bytes when the caller already has
+// them: the live server reads a marker database before it replies, because
+// the script that sent it may delete the file as soon as the reply arrives.
+async function postMarkers(post, uri, raw) {
     try {
-        const raw = await vscode.workspace.fs.readFile(uri);
+        if (!raw) raw = await vscode.workspace.fs.readFile(uri);
         const decoded = await decodeLayoutBytes(raw, MAX_MARKER_BYTES);
         if (!decoded.ok) {
             logger.appendLine('>>> Could not decompress marker file at ' + uri.toString() + ': ' + decoded.detail);
@@ -292,6 +294,23 @@ async function buildWebviewHtml({ webview, extensionUri, htmlName }) {
     return htmlContent;
 }
 
+// A layout's stat and bytes, read now for a sendLayout later (see its
+// `snapshot` argument). The live server needs this: kfactory's show() writes
+// the layout to a temporary file and deletes it as soon as it gets a reply, so
+// the bytes have to be in memory before the reply goes out, and an editor that
+// is still opening would otherwise read a file that is gone. A file over the
+// size limit is stat'ed but not read; sendLayout refuses it on the stat alone.
+// Null when the file cannot be read at all.
+async function readLayoutSnapshot(uri) {
+    try {
+        const stat = await vscode.workspace.fs.stat(uri);
+        const bytes = stat.size > MAX_LAYOUT_BYTES ? null : await vscode.workspace.fs.readFile(uri);
+        return { stat, bytes };
+    } catch {
+        return null;
+    }
+}
+
 // Everything one open layout needs from disk: the size-checked, gzip-aware
 // read that turns into an 'init' message, and the watch/settle/auto-reload
 // loop that turns a file change into either a silent re-read or a
@@ -317,14 +336,15 @@ function createLayoutLoader({ uri, post, logPrefix = '' }) {
 
     // Reads the file and hands it to the webview, as the first load
     // (isReload false, viewer frames the design) or a re-read (isReload true,
-    // viewer keeps camera and layer visibility).
-    const sendLayout = async (isReload) => {
+    // viewer keeps camera and layer visibility). `snapshot` is a
+    // readLayoutSnapshot taken earlier, used in place of reading the disk now.
+    const sendLayout = async (isReload, snapshot) => {
         // Size-check before reading: the read itself allocates the whole
         // file, so on an oversized one this is the difference between an
         // instant explanation and a long stall ending in a failure the
         // webview never hears about (it would sit on the loading overlay
         // forever, since 'init' is what starts its progress reporting).
-        const stat = await statOrNull();
+        const stat = snapshot ? snapshot.stat : await statOrNull();
         if (!stat) {
             logger.appendLine(logPrefix + '>>> Layout file is not readable (deleted or moved?)');
             post({ type: 'loadError', message: `${baseName(uri)} is no longer on disk.` });
@@ -342,9 +362,9 @@ function createLayoutLoader({ uri, post, logPrefix = '' }) {
             return false;
         }
 
-        let fileData;
+        let fileData = snapshot ? snapshot.bytes : null;
         try {
-            fileData = await vscode.workspace.fs.readFile(uri);
+            if (!fileData) fileData = await vscode.workspace.fs.readFile(uri);
         } catch (err) {
             // Out of memory on a large-but-allowed file, a disk error, a
             // vanished network mount -- the viewer is already showing its
@@ -588,6 +608,162 @@ function createReadyGate({ webview, onReconnect, logPrefix = '' }) {
     };
 }
 
+// ---- Keyboard shortcuts -----------------------------------------------------
+// The viewer's single-key shortcuts (H, /, M, [, ]) are VS Code commands bound
+// in package.json, so they show up in Keyboard Shortcuts and can be rebound
+// there. A focused webview forwards every keydown to the workbench (see
+// handleInnerKeydown in VS Code's webview preload), which is what lets those
+// bindings fire while the viewer has focus.
+//
+// They are bound on the GDS-Lens.viewerKeys context key rather than on
+// activeCustomEditorId, because activeCustomEditorId stays set while focus is
+// in the Explorer or the terminal, and a bare "h" bound on it would fire while
+// typing there. The viewer reports whether its document has focus outside a
+// text input (setKeyboardContext in webview-host.js), and the key is true while
+// any open viewer says so.
+
+const VIEWER_KEYS_CONTEXT = 'GDS-Lens.viewerKeys';
+
+// The actions the viewer's runAction takes, by command id.
+const VIEWER_ACTIONS = {
+    'GDS-Lens.toggleHierarchy': 'toggleHierarchy',
+    'GDS-Lens.focusFind': 'focusFind',
+    'GDS-Lens.toggleMeasure': 'toggleMeasure',
+    'GDS-Lens.previousMarker': 'previousMarker',
+    'GDS-Lens.nextMarker': 'nextMarker',
+    'GDS-Lens.showShortcuts': 'showShortcuts'
+};
+
+// The rows of the viewer's shortcut list, in the order they are listed. A
+// command with no keybinding in package.json gets no row. `editorOnly` rows are
+// left out of the comparison view, where their keybinding does not apply.
+const SHORTCUT_ROWS = [
+    { command: 'GDS-Lens.toggleHierarchy', label: 'Show or hide the cell hierarchy' },
+    { command: 'GDS-Lens.focusFind', label: 'Find a cell or label' },
+    { command: 'GDS-Lens.toggleMeasure', label: 'Turn measure mode on or off' },
+    { command: 'GDS-Lens.previousMarker', label: 'Previous marker' },
+    { command: 'GDS-Lens.nextMarker', label: 'Next marker' },
+    { command: 'GDS-Lens.goToCoordinate', label: 'Go to a coordinate' },
+    { command: 'GDS-Lens.compareWithCurrent', label: 'Compare with another layout', editorOnly: true }
+];
+
+const KEY_NAMES = {
+    escape: 'Esc', enter: 'Enter', space: 'Space', tab: 'Tab', backspace: 'Backspace',
+    delete: 'Delete', insert: 'Insert', home: 'Home', end: 'End',
+    pageup: 'PageUp', pagedown: 'PageDown',
+    up: 'Up', down: 'Down', left: 'Left', right: 'Right'
+};
+const MAC_KEY_NAMES = { ...KEY_NAMES, escape: '⎋', enter: '↩', backspace: '⌫', delete: '⌦',
+    up: '↑', down: '↓', left: '←', right: '→' };
+
+// One keybinding string ("ctrl+k d", "[") as VS Code displays it on
+// `platform` ('mac', 'win' or 'linux'): "⌘K D" on macOS, "Ctrl+K D"
+// elsewhere. macOS uses the modifier symbols in Apple's order (⌃⌥⇧⌘) with no
+// separator, as VS Code's own menus do.
+function formatKeybinding(spec, platform) {
+    return spec.trim().split(/\s+/).map((chord) => {
+        const parts = chord.toLowerCase().split('+');
+        // "ctrl++" is a binding on the plus key: the empty part after the
+        // last "+" is the key itself.
+        const key = parts.pop() || '+';
+        const mods = new Set(parts.map((m) => (m === 'meta' || m === 'win' || m === 'cmd') ? 'meta' : m));
+        const names = platform === 'mac' ? MAC_KEY_NAMES : KEY_NAMES;
+        const keyText = names[key] || (key.length === 1 ? key.toUpperCase() : key[0].toUpperCase() + key.slice(1));
+        if (platform === 'mac') {
+            return (mods.has('ctrl') ? '⌃' : '') + (mods.has('alt') ? '⌥' : '') +
+                (mods.has('shift') ? '⇧' : '') + (mods.has('meta') ? '⌘' : '') + keyText;
+        }
+        const meta = platform === 'win' ? 'Win' : 'Super';
+        return [
+            mods.has('ctrl') && 'Ctrl', mods.has('shift') && 'Shift',
+            mods.has('alt') && 'Alt', mods.has('meta') && meta, keyText
+        ].filter(Boolean).join('+');
+    }).join(' ');
+}
+
+// The shortcut rows for one kind of viewer, from the keybindings this
+// extension contributes (its package.json, passed in as `packageJSON`). Each
+// row carries its keys for all three platforms, and the webview picks one:
+// keybindings follow the OS of the machine the window is on, which the
+// extension host cannot tell from where it runs (over SSH or in a container it
+// is a Linux host behind a Mac or Windows window, and on vscode.dev it is a
+// browser worker). The webview runs on that machine and can.
+//
+// These are the default keys. A binding the user has changed in Keyboard
+// Shortcuts is not reflected, because extensions have no API to read the
+// user's keybindings.
+function buildShortcutRows(packageJSON, { compare = false } = {}) {
+    const bindings = (packageJSON && packageJSON.contributes && packageJSON.contributes.keybindings) || [];
+    const rows = [];
+    for (const row of SHORTCUT_ROWS) {
+        if (compare && row.editorOnly) continue;
+        const binding = bindings.find((b) => b.command === row.command);
+        if (!binding || !binding.key) continue;
+        rows.push({
+            label: row.label,
+            keys: {
+                mac: formatKeybinding(binding.mac || binding.key, 'mac'),
+                win: formatKeybinding(binding.win || binding.key, 'win'),
+                linux: formatKeybinding(binding.linux || binding.key, 'linux')
+            }
+        });
+    }
+    return rows;
+}
+
+function postShortcuts(context, post, options) {
+    post({ type: 'shortcuts', rows: buildShortcutRows(context.extension.packageJSON, options) });
+}
+
+// The one piece of state shared by every open viewer, editor or comparison:
+// which of them currently says it should receive the single-key shortcuts.
+// `track` is called once per panel and handles that panel's
+// 'keyboardContext' and 'customizeShortcuts' messages; `focused` is the panel
+// the viewer-action commands go to when one has focus.
+function createViewerKeys(context) {
+    // Panels reporting true, most recent last. A Set rather than one slot:
+    // focus moving from viewer A to viewer B arrives as two messages from two
+    // webviews, in no promised order, and B's true must survive A's late false.
+    const reporting = new Set();
+    let current = false;
+    const sync = () => {
+        const value = reporting.size > 0;
+        if (value === current) return;
+        current = value;
+        vscode.commands.executeCommand('setContext', VIEWER_KEYS_CONTEXT, value);
+    };
+
+    return {
+        track(panel) {
+            const subscription = panel.webview.onDidReceiveMessage((message) => {
+                if (!message) return;
+                if (message.command === 'keyboardContext') {
+                    reporting.delete(panel);
+                    if (message.active) reporting.add(panel);
+                    sync();
+                } else if (message.command === 'customizeShortcuts') {
+                    // "@ext:" filters Keyboard Shortcuts to this extension's
+                    // commands, the same query VS Code's own "Keyboard
+                    // Shortcuts" item in the Extensions view uses.
+                    vscode.commands.executeCommand(
+                        'workbench.action.openGlobalKeybindings', '@ext:' + context.extension.id);
+                }
+            });
+            return {
+                dispose() {
+                    subscription.dispose();
+                    reporting.delete(panel);
+                    sync();
+                }
+            };
+        },
+        focused() {
+            const panels = [...reporting];
+            return panels.length ? panels[panels.length - 1] : null;
+        }
+    };
+}
+
 module.exports = {
     logger,
     MAX_LAYOUT_BYTES,
@@ -610,6 +786,13 @@ module.exports = {
     postLyp,
     postMarkers,
     buildWebviewHtml,
+    readLayoutSnapshot,
     createLayoutLoader,
-    createReadyGate
+    createReadyGate,
+    VIEWER_KEYS_CONTEXT,
+    VIEWER_ACTIONS,
+    formatKeybinding,
+    buildShortcutRows,
+    postShortcuts,
+    createViewerKeys
 };

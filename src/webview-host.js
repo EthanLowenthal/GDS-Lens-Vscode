@@ -36,6 +36,11 @@
     let pendingViewName = null;
     let pendingViews = null;
     let pendingDisplay = null;
+    // The shortcut rows for the viewer's shortcut list, pushed by the
+    // extension host on open (and again whenever it likes); null until the
+    // first arrives. Waiters are shortcuts() calls made before then.
+    let shortcutRows = null;
+    let shortcutWaiters = [];
     let viewer = null;
     // viewer.js calls connect() as it finishes loading, so in practice it is
     // always set before the host posts anything. Queue rather than assume it:
@@ -138,6 +143,23 @@
             return new Worker(URL.createObjectURL(new Blob([bytes], { type: "application/javascript" })));
         },
 
+        // Implementing this tells the viewer that H, /, M, [ and ] are VS
+        // Code keybindings (see package.json) rather than keys it handles
+        // itself, so they can be rebound in Keyboard Shortcuts. The rows are
+        // what its shortcut list shows above its own fixed ones. Returned
+        // directly once the extension host has sent them, else as a promise
+        // that resolves when it does.
+        shortcuts: () => shortcutRows ||
+            new Promise((resolve) => { shortcutWaiters.push(resolve); }),
+        // The shortcut list's "Customize..." button: opens Keyboard Shortcuts
+        // filtered to this extension.
+        customizeShortcuts: () => post({ command: "customizeShortcuts" }),
+        // Whether the viewer document has focus outside a text input. The
+        // extension host turns this into the GDS-Lens.viewerKeys context key
+        // the single-key bindings are conditioned on, so they do not fire
+        // while you type in the viewer's search box or anywhere else.
+        setKeyboardContext: (active) => post({ command: "keyboardContext", active: !!active }),
+
         requestReload: () => post({ command: "reloadFile" }),
         setAutoReload: (value) => post({ command: "setAutoReload", value }),
         onGotoResult: (result) => post({ command: "gotoResult", ...result }),
@@ -161,6 +183,15 @@
     // editor sends nothing at all. Both map onto the viewer's two layout
     // slots, with "a" as the default the single editor lands on.
     const slotOf = (message) => (message.pane === "right" ? "b" : "a");
+
+    // Which OS's keys to show. Keybindings follow the OS of the machine the
+    // window is on, which is the machine this page runs on, so the extension
+    // host sends every row's keys for all three and the choice is made here.
+    // The same user-agent test VS Code itself uses in a browser.
+    const ua = navigator.userAgent;
+    const platform = ua.indexOf("Macintosh") >= 0 ? "mac"
+        : ua.indexOf("Windows") >= 0 ? "win"
+        : "linux";
 
     // The comparison page's "A foo.gds  B bar.gds" bar (see compare.html) --
     // the one piece of chrome outside the viewer either page has, and this is
@@ -239,13 +270,23 @@
             case "toggleDebugTools":
                 viewer.toggleDebug();
                 break;
+            case "shortcuts":
+                shortcutRows = message.rows.map((row) => ({ label: row.label, keys: row.keys[platform] }));
+                for (const resolve of shortcutWaiters) resolve(shortcutRows);
+                shortcutWaiters = [];
+                break;
+            case "viewerAction":
+                viewer.runAction(message.action);
+                break;
         }
     }
 
     window.addEventListener("message", (event) => {
         const message = event.data;
         if (!message || !message.type) return;
-        if (!viewer) queued.push(message);
+        // The shortcut rows are held here rather than handed to the viewer,
+        // so they need no viewer to arrive.
+        if (!viewer && message.type !== "shortcuts") queued.push(message);
         else handle(message);
     });
 

@@ -18,10 +18,15 @@ const {
     postLyp,
     postMarkers,
     buildWebviewHtml,
+    readLayoutSnapshot,
     createLayoutLoader,
-    createReadyGate
+    createReadyGate,
+    VIEWER_ACTIONS,
+    postShortcuts,
+    createViewerKeys
 } = require('./shared.cjs');
 const { CompareViewProvider } = require('./compare-provider.cjs');
+const { startLiveServer } = require('./live-server.cjs');
 
 // globalState key holding the URI of the most recently loaded .lyp,
 // so it's re-applied automatically to every GDS viewer opened afterwards
@@ -58,7 +63,12 @@ function activate(context) {
     // the in-viewer log for the half of the story the host cannot see.
     logger.appendLine(">>> GDSII Extension Core Spinning Up (wasm parsing + rendering)...");
 
-    const provider = new GdsEditorProvider(context);
+    // Which open viewer, editor or comparison, should get the single-key
+    // shortcuts (see createViewerKeys in shared.cjs). Shared by both
+    // providers, since the context key it sets is one value for the window.
+    const viewerKeys = createViewerKeys(context);
+    const provider = new GdsEditorProvider(context, viewerKeys);
+    const compareProvider = new CompareViewProvider(context, viewerKeys);
     context.subscriptions.push(
         vscode.window.registerCustomEditorProvider('GDS-Lens.editor', provider, {
             // Without this, VS Code destroys the webview's DOM whenever the tab
@@ -91,9 +101,35 @@ function activate(context) {
     // reject an unreadable pair as you type it, which lil-gui has no way to do.
     context.subscriptions.push(
         vscode.commands.registerCommand('GDS-Lens.goToCoordinate', () => {
-            return provider.goToCoordinate();
+            return provider.goToCoordinate(viewerTarget(), openViewerCount());
         })
     );
+
+    // The viewer to send a command to: the one whose keyboard context is
+    // active (it has focus, so its key press is what ran the command), else
+    // the active comparison panel, else the active or only layout editor.
+    const viewerTarget = () =>
+        viewerKeys.focused() || compareProvider.activePanel() || provider.activePanel();
+    const openViewerCount = () => provider.panels.size + compareProvider.panels.size;
+
+    // The viewer's own shortcuts as commands, so they can be rebound in
+    // Keyboard Shortcuts (see the keybindings in package.json). The viewer
+    // does the work; these only say which viewer and which action.
+    for (const [command, action] of Object.entries(VIEWER_ACTIONS)) {
+        context.subscriptions.push(
+            vscode.commands.registerCommand(command, () => {
+                const target = viewerTarget();
+                if (!target) {
+                    vscode.window.showInformationMessage(
+                        openViewerCount() === 0
+                            ? 'GDS Lens: open a layout first.'
+                            : 'GDS Lens: click the layout you want, then run this again.');
+                    return;
+                }
+                target.webview.postMessage({ type: 'viewerAction', action });
+            })
+        );
+    }
 
     // The only in-editor way back out of auto-reload: with it on, the viewer's
     // "newer version on disk" banner (which is where you turn it on) never
@@ -117,7 +153,6 @@ function activate(context) {
     // invoked from the Explorer's context menu over a multi-selection: the
     // clicked resource and the full selection. Both are undefined from the
     // command palette.
-    const compareProvider = new CompareViewProvider(context);
     context.subscriptions.push(
         vscode.commands.registerCommand('GDS-Lens.compareLayouts', (uri, uris) => {
             return compareProvider.compareLayouts(uri, uris);
@@ -135,17 +170,81 @@ function activate(context) {
             return compareProvider.compareWithCurrent(uri || provider.activeLayoutUri());
         })
     );
+
+    // "GDS Lens: Get Started" -- the walkthrough contributed in package.json,
+    // which VS Code otherwise only offers from its Welcome page.
+    context.subscriptions.push(
+        vscode.commands.registerCommand('GDS-Lens.getStarted', () => {
+            return vscode.commands.executeCommand(
+                'workbench.action.openWalkthrough', 'ethml.GDS-Lens#gettingStarted', false);
+        })
+    );
+
+    // The KLive-compatible listener gdsfactory and kfactory's show() talks to
+    // (see live-server.cjs). Null on the web, where there are no sockets.
+    const liveServer = startLiveServer({ show: (request) => provider.liveShow(request) });
+    if (liveServer) context.subscriptions.push(liveServer);
 }
 
 class GdsEditorProvider {
-    constructor(context) {
+    constructor(context, viewerKeys) {
         this.context = context;
+        this.viewerKeys = viewerKeys;
         // Every currently-open GDS webview panel, so showDebugTools() can
         // reach them (removed on dispose, see resolveCustomEditor).
         this.panels = new Set();
         // Which layout each of those panels is showing. A WeakMap so a panel
         // dropping out of the Set above is the only bookkeeping there is.
         this.uriOf = new WeakMap();
+        // How each panel applies a live-preview request (see liveShow), set
+        // up in resolveCustomEditor where its loader lives.
+        this.liveHandlerOf = new WeakMap();
+        // Live-preview requests for editors liveShow is opening, keyed by
+        // layout URI: resolveCustomEditor takes its own as it starts, so the
+        // first load uses the bytes read before the reply went out.
+        this.pendingLive = new Map();
+    }
+
+    // Serves one show() from the live server: reloads the layout in every
+    // editor that has it open, or opens it beside the current editor. The
+    // layout and marker bytes are read here, before the server replies,
+    // because kfactory deletes a temporary layout as soon as the reply
+    // arrives. Resolves to the reply type klive would have sent.
+    async liveShow({ uri, markersUri, keepPosition }) {
+        const snapshot = await readLayoutSnapshot(uri);
+        if (!snapshot) throw new Error('the file does not exist or cannot be read');
+        let markers = null;
+        let markersFailed = false;
+        if (markersUri) {
+            try {
+                markers = { uri: markersUri, raw: await vscode.workspace.fs.readFile(markersUri) };
+            } catch (err) {
+                markersFailed = true;
+                logger.appendLine('>>> Could not read marker file at ' + markersUri.toString() + ': ' + err.message);
+            }
+        }
+        const request = { snapshot, markers, keepPosition };
+
+        const key = uri.toString();
+        const open = [...this.panels].filter((panel) => this.uriOf.get(panel).toString() === key);
+        if (open.length > 0) {
+            for (const panel of open) await this.liveHandlerOf.get(panel)(request);
+            // Brought to the front of its group, as KLive switches to the
+            // view it reloaded, without taking focus from the script's editor.
+            open[0].reveal(undefined, true);
+            return { type: 'reload', markersFailed };
+        }
+
+        this.pendingLive.set(key, request);
+        try {
+            await vscode.commands.executeCommand('vscode.openWith', uri, 'GDS-Lens.editor', {
+                viewColumn: vscode.ViewColumn.Beside,
+                preserveFocus: true
+            });
+        } finally {
+            this.pendingLive.delete(key);
+        }
+        return { type: 'open', markersFailed };
     }
 
     // The panel a command that acts on *one* layout should act on: the focused
@@ -170,13 +269,14 @@ class GdsEditorProvider {
     }
 
     // Asks for a coordinate and pans one viewer to it. Unlike toggleDebugTools
-    // this targets a single panel (see activePanel): panning every open layout
-    // to the same point would be nonsense.
-    async goToCoordinate() {
-        const target = this.activePanel();
+    // this targets a single panel, `target`, which activate() picks and which
+    // can be a comparison panel as well as an editor: panning every open
+    // layout to the same point would be nonsense. `openCount` is how many
+    // viewers of either kind are open, for the message when there is no target.
+    async goToCoordinate(target, openCount) {
         if (!target) {
             vscode.window.showInformationMessage(
-                this.panels.size === 0
+                openCount === 0
                     ? 'GDS Lens: open a layout first.'
                     : 'GDS Lens: click the layout you want to move, then run this again.');
             return;
@@ -304,6 +404,7 @@ class GdsEditorProvider {
                 this.panels.delete(webviewPanel);
                 for (const d of disposables) d.dispose();
             });
+            disposables.push(this.viewerKeys.track(webviewPanel));
 
             // postMessage on a disposed webview throws, and every path below
             // can reach one: the reload flow awaits stats and reads, and the
@@ -318,13 +419,46 @@ class GdsEditorProvider {
             const loader = createLayoutLoader({ uri: document.uri, post });
             disposables.push({ dispose: () => loader.dispose() });
 
+            // A live-preview request this editor was opened for, or one that
+            // arrived before the first send (see liveShow). Used once by
+            // sendEverything; a webview that reloads later reads the disk.
+            let live = this.pendingLive.get(document.uri.toString()) || null;
+            this.pendingLive.delete(document.uri.toString());
+            let firstSendStarted = false;
+            // A marker database from a live request: shown, and remembered
+            // for this layout the same way one picked in the panel is.
+            const applyLiveMarkers = async (markers) => {
+                await this.updateMarkerMap((map) => {
+                    deleteByUri(map, document.uri);
+                    map[document.uri.toString()] = markers.uri.toString();
+                });
+                await postMarkers(post, markers.uri, markers.raw);
+            };
+            this.liveHandlerOf.set(webviewPanel, async (request) => {
+                // Still waiting on the webview: the first send picks it up.
+                if (!firstSendStarted) {
+                    live = request;
+                    return;
+                }
+                // keep_position maps onto the reload flag: a reload keeps the
+                // camera and layer visibility, a first load frames the design.
+                // Either way the snapshot stamps the loader, so the watcher
+                // event for the same write finds nothing new and does not
+                // reload a second time.
+                if (!(await loader.sendLayout(request.keepPosition, request.snapshot))) return;
+                if (request.markers) await applyLiveMarkers(request.markers);
+            });
+
             // Everything one open needs, in one function because a webview
             // that reloaded needs exactly the same thing again: it comes back
             // holding nothing at all (see createReadyGate).
             const sendEverything = async () => {
                 // First, so the toggles are set before the layout is drawn.
                 postDisplayPrefs(this.context, post);
-                if (!(await loader.sendLayout(false))) return;
+                postShortcuts(this.context, post);
+                const request = live;
+                live = null;
+                if (!(await loader.sendLayout(false, request && request.snapshot))) return;
 
                 // Re-apply the most recently loaded .lyp, if any. Safe to post now:
                 // viewer.js's 'lypLoaded' handler waits on the wasm module, and the
@@ -339,9 +473,12 @@ class GdsEditorProvider {
                 // Re-apply this GDS file's remembered marker database, if any
                 // (per-GDS, unlike the .lyp above). Same ordering guarantee: the
                 // webview parses and holds the markers until geometry arrives.
+                // A live request's own marker database takes its place.
                 const markerMap = this.context.workspaceState.get(MARKER_PATHS_KEY) || {};
                 const savedMarkerUri = uriFromStored(lookupByUri(markerMap, document.uri));
-                if (savedMarkerUri && !(await postMarkers(post, savedMarkerUri))) {
+                if (request && request.markers) {
+                    await applyLiveMarkers(request.markers);
+                } else if (savedMarkerUri && !(await postMarkers(post, savedMarkerUri))) {
                     await this.updateMarkerMap((map) => { deleteByUri(map, document.uri); });
                 }
                 // This layout's saved views. Sent whether or not there are any --
@@ -458,7 +595,11 @@ class GdsEditorProvider {
             //    also free to close while the page loads, which leaves nothing
             //    worth sending.
             ready.wait()
-                .then(() => (disposed ? undefined : sendEverything()))
+                .then(() => {
+                    if (disposed) return undefined;
+                    firstSendStarted = true;
+                    return sendEverything();
+                })
                 .catch((err) => {
                     logger.appendLine('[FATAL CRASH ERROR] ' + err.stack);
                     post({ type: 'loadError', message: err.message });

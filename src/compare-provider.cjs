@@ -24,7 +24,8 @@ const {
     postMarkers,
     buildWebviewHtml,
     createLayoutLoader,
-    createReadyGate
+    createReadyGate,
+    postShortcuts
 } = require('./shared.cjs');
 
 // Reused from the single editor's remembered-.lyp key: a .lyp is a styling
@@ -37,12 +38,22 @@ const LAST_LYP_PATH_KEY = 'GDS-Lens.lastLypPath';
 const LAYOUT_EXTENSION_RE = /\.(gds|oas|oasis)(\.gz)?$/i;
 
 class CompareViewProvider {
-    constructor(context) {
+    constructor(context, viewerKeys) {
         this.context = context;
-        // Open comparison panels, for a future "Show Debug Tools" reach --
-        // not wired to that command yet (see DEVELOPING.md-equivalent note
-        // in the implementation plan: v1 leaves it scoped to single editors).
+        // The window-wide keyboard routing (see createViewerKeys in
+        // shared.cjs), which each comparison panel reports its focus to.
+        this.viewerKeys = viewerKeys;
+        // Open comparison panels, so the viewer-action commands and Go to
+        // Coordinate can reach the active one. "Toggle Debug Tools" is not
+        // wired to them; it stays scoped to single editors.
         this.panels = new Set();
+    }
+
+    // The comparison panel that is the active editor, if one is. Unlike the
+    // single editor's activePanel there is no "the only one open" fallback:
+    // a command run with focus elsewhere goes to a layout editor first.
+    activePanel() {
+        return [...this.panels].find((panel) => panel.active) || null;
     }
 
     // `uri`/`uris` are exactly what VS Code hands a command bound to an
@@ -154,6 +165,7 @@ class CompareViewProvider {
             this.panels.delete(panel);
             for (const d of disposables) d.dispose();
         });
+        disposables.push(this.viewerKeys.track(panel));
 
         // Unstamped: there is one viewer, so a .lyp or marker message has
         // nothing to be about but the whole of it. Only the layout messages
@@ -205,6 +217,7 @@ class CompareViewProvider {
         // lot again (see createReadyGate).
         const sendEverything = async () => {
             postDisplayPrefs(this.context, post);
+            postShortcuts(this.context, post, { compare: true });
             const [okLeft, okRight] = await Promise.all([
                 panes.left.loader.sendLayout(false),
                 panes.right.loader.sendLayout(false)
@@ -243,6 +256,14 @@ class CompareViewProvider {
             }
             if (message.command === 'saveDisplay') {
                 await saveDisplayPrefs(this.context, message.prefs);
+                return;
+            }
+            if (message.command === 'gotoResult') {
+                // Go to Coordinate's answer, as in the single editor.
+                if (!message.ok) {
+                    vscode.window.setStatusBarMessage(
+                        `GDS Lens: (${message.x}, ${message.y}) µm is outside the layouts`, 5000);
+                }
                 return;
             }
             if (message.command === 'setAutoReload') {

@@ -32,9 +32,6 @@
     "tapeout",
     "asic",
     "lyrdb",
-    "klayout",
-    "gdsfactory",
-    "kfactory",
     "gds viewer",
     "gds preview",
     "gdsii preview",
@@ -47,6 +44,9 @@
   "engines": {
     "vscode": "^1.85.0"
   },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./dist/extension.js",
   "browser": "./dist/extension.js",
   "capabilities": {
@@ -58,7 +58,7 @@
   "publisher": "ethml",
   "scripts": {
     "build:webview": "node scripts/copy-webview.mjs",
-    "bundle": "esbuild src/extension.cjs --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=browser --target=es2022 --minify",
+    "bundle": "esbuild src/extension.cjs --bundle --outfile=dist/extension.js --external:vscode --external:net --format=cjs --platform=browser --target=es2022 --minify",
     "compile": "npm run build:webview && npm run bundle",
     "watch": "npm run build:webview && npm run bundle -- --sourcemap --watch",
     "vscode:prepublish": "npm run compile",
@@ -115,17 +115,76 @@
         "title": "Compare Current Layout With...",
         "category": "GDS Lens",
         "icon": "$(git-compare)"
+      },
+      {
+        "command": "GDS-Lens.getStarted",
+        "title": "Get Started",
+        "category": "GDS Lens"
+      },
+      {
+        "command": "GDS-Lens.toggleHierarchy",
+        "title": "Toggle Hierarchy",
+        "category": "GDS Lens"
+      },
+      {
+        "command": "GDS-Lens.focusFind",
+        "title": "Find Cell or Label",
+        "category": "GDS Lens"
+      },
+      {
+        "command": "GDS-Lens.toggleMeasure",
+        "title": "Toggle Measure Mode",
+        "category": "GDS Lens"
+      },
+      {
+        "command": "GDS-Lens.previousMarker",
+        "title": "Previous Marker",
+        "category": "GDS Lens"
+      },
+      {
+        "command": "GDS-Lens.nextMarker",
+        "title": "Next Marker",
+        "category": "GDS Lens"
+      },
+      {
+        "command": "GDS-Lens.showShortcuts",
+        "title": "Show Keyboard Shortcuts",
+        "category": "GDS Lens"
       }
     ],
     "menus": {
       "commandPalette": [
         {
           "command": "GDS-Lens.goToCoordinate",
-          "when": "activeCustomEditorId == 'GDS-Lens.editor'"
+          "when": "activeCustomEditorId == 'GDS-Lens.editor' || activeWebviewPanelId == 'GDS-Lens.compare'"
         },
         {
           "command": "GDS-Lens.compareWithCurrent",
           "when": "activeCustomEditorId == 'GDS-Lens.editor'"
+        },
+        {
+          "command": "GDS-Lens.toggleHierarchy",
+          "when": "activeCustomEditorId == 'GDS-Lens.editor' || activeWebviewPanelId == 'GDS-Lens.compare'"
+        },
+        {
+          "command": "GDS-Lens.focusFind",
+          "when": "activeCustomEditorId == 'GDS-Lens.editor' || activeWebviewPanelId == 'GDS-Lens.compare'"
+        },
+        {
+          "command": "GDS-Lens.toggleMeasure",
+          "when": "activeCustomEditorId == 'GDS-Lens.editor' || activeWebviewPanelId == 'GDS-Lens.compare'"
+        },
+        {
+          "command": "GDS-Lens.previousMarker",
+          "when": "activeCustomEditorId == 'GDS-Lens.editor' || activeWebviewPanelId == 'GDS-Lens.compare'"
+        },
+        {
+          "command": "GDS-Lens.nextMarker",
+          "when": "activeCustomEditorId == 'GDS-Lens.editor' || activeWebviewPanelId == 'GDS-Lens.compare'"
+        },
+        {
+          "command": "GDS-Lens.showShortcuts",
+          "when": "activeCustomEditorId == 'GDS-Lens.editor' || activeWebviewPanelId == 'GDS-Lens.compare'"
         }
       ],
       "editor/title": [
@@ -177,8 +236,125 @@
           "type": "boolean",
           "default": false,
           "description": "Reload the viewer automatically when the open layout file changes on disk. When off, a header offers Reload (once) and Always (turns this on) instead."
+        },
+        "GDS-Lens.liveServer.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Listen on 127.0.0.1 for show() calls from Python layout scripts and open the layout in GDS Lens, or reload it if it is already open. Desktop only. If another program already has the port, GDS Lens does not listen and show() goes to that program."
+        },
+        "GDS-Lens.liveServer.port": {
+          "type": "integer",
+          "default": 8082,
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "Port for the live preview server. show() always connects to 8082, so change this only to keep GDS Lens off that port."
         }
       }
-    }
+    },
+    "keybindings": [
+      {
+        "command": "GDS-Lens.goToCoordinate",
+        "key": "ctrl+g",
+        "when": "activeCustomEditorId == 'GDS-Lens.editor' || activeWebviewPanelId == 'GDS-Lens.compare'"
+      },
+      {
+        "command": "GDS-Lens.compareWithCurrent",
+        "key": "ctrl+k d",
+        "mac": "cmd+k d",
+        "when": "activeCustomEditorId == 'GDS-Lens.editor'"
+      },
+      {
+        "command": "GDS-Lens.toggleHierarchy",
+        "key": "h",
+        "when": "GDS-Lens.viewerKeys && (activeCustomEditorId == 'GDS-Lens.editor' || activeWebviewPanelId == 'GDS-Lens.compare')"
+      },
+      {
+        "command": "GDS-Lens.focusFind",
+        "key": "/",
+        "when": "GDS-Lens.viewerKeys && (activeCustomEditorId == 'GDS-Lens.editor' || activeWebviewPanelId == 'GDS-Lens.compare')"
+      },
+      {
+        "command": "GDS-Lens.toggleMeasure",
+        "key": "m",
+        "when": "GDS-Lens.viewerKeys && (activeCustomEditorId == 'GDS-Lens.editor' || activeWebviewPanelId == 'GDS-Lens.compare')"
+      },
+      {
+        "command": "GDS-Lens.previousMarker",
+        "key": "[",
+        "when": "GDS-Lens.viewerKeys && (activeCustomEditorId == 'GDS-Lens.editor' || activeWebviewPanelId == 'GDS-Lens.compare')"
+      },
+      {
+        "command": "GDS-Lens.nextMarker",
+        "key": "]",
+        "when": "GDS-Lens.viewerKeys && (activeCustomEditorId == 'GDS-Lens.editor' || activeWebviewPanelId == 'GDS-Lens.compare')"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "gettingStarted",
+        "title": "Get Started with GDS Lens",
+        "description": "View GDSII and OASIS layouts, match your PDK's layer colors, compare revisions and preview layouts from Python.",
+        "steps": [
+          {
+            "id": "open",
+            "title": "Open a layout",
+            "description": "Open any .gds, .oas or .oasis file, gzipped or not. It opens in GDS Lens.\n[Open a Layout](command:workbench.action.files.openFile)",
+            "media": {
+              "image": "images/example.png",
+              "altText": "A layout open in GDS Lens"
+            },
+            "completionEvents": [
+              "onContext:activeCustomEditorId == 'GDS-Lens.editor'"
+            ]
+          },
+          {
+            "id": "layers",
+            "title": "Match your PDK's layer colors",
+            "description": "Load a .lyp layer properties file from Display > Load .lyp File. It applies to every layout you open after that.",
+            "media": {
+              "markdown": "walkthrough/layers.md"
+            },
+            "completionEvents": [
+              "onStepSelected"
+            ]
+          },
+          {
+            "id": "navigate",
+            "title": "Get around a layout",
+            "description": "Pan, zoom, search cells and labels, measure, and jump to a coordinate.\n[Go to Coordinate](command:GDS-Lens.goToCoordinate)",
+            "media": {
+              "markdown": "walkthrough/navigate.md"
+            },
+            "completionEvents": [
+              "onStepSelected"
+            ]
+          },
+          {
+            "id": "compare",
+            "title": "Compare two layouts",
+            "description": "Overlay two revisions in one viewer and highlight where they differ.\n[Compare Two Layouts](command:GDS-Lens.compareLayouts)",
+            "media": {
+              "markdown": "walkthrough/compare.md"
+            },
+            "completionEvents": [
+              "onCommand:GDS-Lens.compareLayouts",
+              "onCommand:GDS-Lens.compareWithCurrent"
+            ]
+          },
+          {
+            "id": "live",
+            "title": "Preview layouts from Python",
+            "description": "c.show() opens the layout in GDS Lens, and reloads it in place when you run the script again.\n[Live Preview Settings](command:workbench.action.openSettings?%22GDS-Lens.liveServer%22)",
+            "media": {
+              "markdown": "walkthrough/live.md"
+            },
+            "when": "!isWeb",
+            "completionEvents": [
+              "onStepSelected"
+            ]
+          }
+        ]
+      }
+    ]
   }
 }

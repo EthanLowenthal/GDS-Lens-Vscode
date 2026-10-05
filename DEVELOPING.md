@@ -14,6 +14,10 @@ from there as a package.
   streams its bytes into the webview, and relays the `.lyp` and marker file
   pickers. Uses no Node builtins, so the one bundle serves both the desktop
   host and the Web Worker host: see "Running on the web" below.
+- `src/live-server.cjs` - the KLive-compatible TCP listener that gdsfactory
+  and kfactory's `show()` talks to. The one file that uses a Node builtin
+  (`net`), loaded so that the web bundle still works: see "Live preview
+  server" below.
 - `src/webview-host.js` - the whole of what the viewer knows about VS Code. The
   library defines a `ViewerHost` interface for the things only an embedder can
   do (pick a file, prompt for a name, persist views, request a reload) and ships
@@ -98,6 +102,46 @@ Two things the extension host does to the payload's HTML at serve time:
 rather than a hand-written list, so a file added to the payload cannot be
 silently forgotten), and `script-src 'self'` is rewritten to the webview's own
 resource origin.
+
+## Keyboard shortcuts
+
+The viewer's single-key shortcuts (`H`, `/`, `M`, `[`, `]`) are VS Code
+commands with keybindings in `package.json`, not keys the viewer handles, so
+users can rebind them in Keyboard Shortcuts. The adapter implementing
+`shortcuts()` is what tells the viewer to leave those keys alone.
+
+A key press reaches the commands this way:
+
+1. A focused webview forwards every `keydown` to the workbench
+   (`handleInnerKeydown` in `vs/workbench/contrib/webview/browser/pre/index.html`),
+   which dispatches it through the normal keybinding lookup.
+2. The bindings are conditioned on the context key `GDS-Lens.viewerKeys`. The
+   viewer calls `setKeyboardContext(active)` whenever its document gains or
+   loses focus, or focus enters or leaves a text input, and the adapter posts
+   that as `{command: "keyboardContext", active}`. `createViewerKeys` in
+   `src/shared.cjs` keeps the set of panels reporting true and sets the context
+   key to whether that set is non-empty. A panel that closes is removed.
+3. The command (registered in `activate`) posts
+   `{type: "viewerAction", action}` to the panel reporting true, else the
+   active comparison panel, else the active or only layout editor. The adapter
+   calls `viewer.runAction(action)`.
+
+The context key exists because `activeCustomEditorId` stays set while focus is
+in the Explorer or the terminal. A bare `h` bound on it would fire while typing
+there. The bindings also require `activeCustomEditorId == 'GDS-Lens.editor'` or
+`activeWebviewPanelId == 'GDS-Lens.compare'`, so a context key left set by
+mistake cannot make them fire elsewhere.
+
+The shortcut list the viewer shows (**GDS Lens: Show Keyboard Shortcuts**, or
+its own button) gets its rows from the `shortcuts` message each panel is sent
+on open. `buildShortcutRows` reads the extension's own keybindings from
+`context.extension.packageJSON` and formats each one for macOS, Windows and
+Linux. The adapter picks one by the webview's user agent, because keybindings
+follow the OS of the machine the window runs on, and over SSH or on vscode.dev
+the extension host is somewhere else. The rows show the default keys: VS Code
+gives extensions no way to read the user's keybindings. The list's
+**Customize...** button posts `customizeShortcuts`, which opens Keyboard
+Shortcuts filtered to `@ext:ethml.GDS-Lens`.
 
 ## Building
 
@@ -217,6 +261,9 @@ no Node builtins at all:
 - **No `Buffer`.** `TextDecoder` and a chunked `btoa` do the text and base64
   conversions instead.
 
+The single exception is `net` in `src/live-server.cjs`, which is loaded at
+runtime and is absent on the web by design; see "Live preview server" below.
+
 `eslint.config.mjs` gives the host files worker globals rather than Node ones,
 so reaching for any of the above is a lint warning rather than a failure that
 only shows up in a browser.
@@ -239,6 +286,73 @@ its own, so a CSP missing that origin passes locally and fails only once
 installed from the Marketplace. Anything else that depends on those two being
 separate origins has the same blind spot; the only real check is installing a
 published build on vscode.dev.
+
+## Live preview server
+
+`src/live-server.cjs` implements the server side of the protocol KLayout's
+KLive plugin speaks, so that `show()` in gdsfactory and kfactory opens layouts
+here. The client is `show()` in kfactory's `src/kfactory/kcell.py`; gdsfactory's
+components inherit it. The reference server is
+`klayout/python/klive_server.py` in the gdsfactory/klive repo.
+
+The exchange is one request and one reply per connection:
+
+1. The client connects to `127.0.0.1:8082` with a 0.5 s timeout and sends one
+   JSON object followed by `\n`: `gds` (absolute path to the layout, OASIS by
+   default despite the key), `keep_position`, `libraries` (a list of
+   `{name, file}`, usually empty), and optionally `lyrdb`, `l2n`, `technology`
+   and `markers`. Under WSL every path has been through `wslpath -w`, so it
+   arrives as `\\wsl.localhost\<distro>\...`, `\\wsl$\<distro>\...` or `C:\...`.
+2. The client reads one `recv(1024)` with a 5 s timeout and parses it as JSON:
+   `{"type": "open" | "reload", "file", "version", "klayout_version", "info"?}`.
+   A reply that is not JSON is logged as `Message from klive: ...` and is not
+   an error, so failures are answered in plain text.
+
+Details of the reply that are easy to get wrong:
+
+- **`version` is `0.4.1`.** kfactory warns that klive is out of date when
+  `Version(0, 4, 1).compare(version) >= 0` fails, which is true for any
+  version *newer* than 0.4.1 (klive 0.4.3 itself triggers it). 0.4.1 exactly
+  passes that comparison and the reverse one.
+- **`klayout_version` must be present.** kfactory reads it unguarded once the
+  version check passes, so a reply without it raises `KeyError` from
+  `show()`. It is set to `0.28.13`, kfactory's recommended minimum KLayout,
+  which produces no log line from the comparisons kfactory makes with it.
+- **The reply must fit in 1024 bytes**, or it is cut off and fails to parse.
+  `info` is dropped if it would not fit.
+
+**The layout is read before the reply goes out.** Outside a git repository,
+kfactory writes the layout and the `lyrdb` to the temp directory and deletes
+them as soon as `show()` returns. `GdsEditorProvider.liveShow` reads both into
+memory first (`readLayoutSnapshot` in `src/shared.cjs`) and hands the bytes to
+`sendLayout` as a snapshot. For an editor that is still opening, the snapshot
+waits in `pendingLive` until `resolveCustomEditor` takes it. Because the
+snapshot's stat stamps the loader, the file watcher's event for the same write
+finds nothing new and does not reload a second time.
+
+Requests are served one at a time, so two quick `show()` calls for the same
+new file open one editor and reload it, rather than opening two.
+
+**Why `net` is loaded at runtime.** The bundle is built with
+`--platform=browser` so the same file runs in the Web Worker extension host,
+where there are no Node builtins. `net` is marked `--external` in the `bundle`
+script, so esbuild leaves `require("net")` in place, and `loadNet()` calls it
+inside a `try`. On the desktop that returns Node's module. On the web the
+worker's `require` throws for anything but `vscode`, `startLiveServer` returns
+null, and no status bar item appears. The require sits inside a function, so
+nothing runs at load time. `onStartupFinished` activation starts the server
+before any layout is opened.
+
+**Port conflicts.** The server listens on `127.0.0.1` only. `EADDRINUSE`
+(KLayout's KLive, or another VS Code window) is logged and shown in the status
+bar, with no dialog. Clicking the status bar item, or focusing the window,
+retries a port that was busy. A window that has the port keeps it until it
+closes or the setting changes.
+
+A headless check is to stub the `vscode` module, load `dist/extension.js`,
+and connect with a copy of kfactory's socket code; the reply has to survive
+kfactory's own `semver` comparison, so run that client with `semver`
+installed.
 
 ## Layout size limits
 
