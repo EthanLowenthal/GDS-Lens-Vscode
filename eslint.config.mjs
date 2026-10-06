@@ -1,8 +1,9 @@
 import globals from "globals";
 
-// Since the viewer moved out into the gds-lens package, this repo is just the
-// extension host plus its build script: two environments, so two blocks. The
-// webview, Worker and parser blocks now live in that package's own config.
+// Since the viewer moved out into the gds-lens package, this repo is the
+// extension host, the scripts it puts into a webview, its build scripts and
+// its unit tests: one block per environment. The webview, Worker and parser
+// blocks for the viewer itself live in that package's own config.
 
 // The same set for every block: these are the mistakes worth a warning in a
 // codebase this size, not a style guide.
@@ -70,6 +71,19 @@ export default [
             globals: { ...globals.node },
             ecmaVersion: 2022,
             sourceType: "module",
+        },
+        rules,
+    },
+    {
+        // The unit tests. Real Node, CommonJS, run by `node --test` and never
+        // shipped (.vscodeignore drops test/), so they get Node's globals. The
+        // host block above has to stay strict about those, which is why the
+        // tests do not share it even though they load src/ directly.
+        files: ["test/**/*.cjs"],
+        languageOptions: {
+            globals: { ...globals.node },
+            ecmaVersion: 2022,
+            sourceType: "commonjs",
         },
         rules,
     },

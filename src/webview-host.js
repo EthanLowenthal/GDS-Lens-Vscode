@@ -271,9 +271,16 @@
                 viewer.toggleDebug();
                 break;
             case "shortcuts":
-                shortcutRows = message.rows.map((row) => ({ label: row.label, keys: row.keys[platform] }));
+                shortcutRows = message.rows.map((row) => ({
+                    ...(row.action ? { action: row.action } : {}),
+                    label: row.label,
+                    keys: row.keys[platform]
+                }));
                 for (const resolve of shortcutWaiters) resolve(shortcutRows);
                 shortcutWaiters = [];
+                // The viewer's tooltips carry the keys too, so they re-read
+                // the rows whenever a new set arrives.
+                if (viewer) viewer.refreshShortcuts();
                 break;
             case "viewerAction":
                 viewer.runAction(message.action);

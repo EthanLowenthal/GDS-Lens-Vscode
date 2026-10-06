@@ -275,7 +275,7 @@ class CompareViewProvider {
                     canSelectMany: false,
                     openLabel: 'Load Layer Properties',
                     defaultUri: vscode.Uri.joinPath(uriLeft, '..'),
-                    filters: { 'the .lyp/.lyrdb tooling Properties': ['lyp'] }
+                    filters: { 'Layer Properties': ['lyp'] }
                 });
                 if (fileUri && fileUri[0]) {
                     await this.context.globalState.update(LAST_LYP_PATH_KEY, fileUri[0].toString());

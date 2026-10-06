@@ -638,11 +638,13 @@ const VIEWER_ACTIONS = {
 // command with no keybinding in package.json gets no row. `editorOnly` rows are
 // left out of the comparison view, where their keybinding does not apply.
 const SHORTCUT_ROWS = [
-    { command: 'GDS-Lens.toggleHierarchy', label: 'Show or hide the cell hierarchy' },
-    { command: 'GDS-Lens.focusFind', label: 'Find a cell or label' },
-    { command: 'GDS-Lens.toggleMeasure', label: 'Turn measure mode on or off' },
-    { command: 'GDS-Lens.previousMarker', label: 'Previous marker' },
-    { command: 'GDS-Lens.nextMarker', label: 'Next marker' },
+    // `action` names the viewer action the key runs, which is how the viewer
+    // puts the right key in its own tooltips (the hierarchy's "(H)").
+    { command: 'GDS-Lens.toggleHierarchy', action: 'toggleHierarchy', label: 'Show or hide the cell hierarchy' },
+    { command: 'GDS-Lens.focusFind', action: 'focusFind', label: 'Find a cell or label' },
+    { command: 'GDS-Lens.toggleMeasure', action: 'toggleMeasure', label: 'Turn measure mode on or off' },
+    { command: 'GDS-Lens.previousMarker', action: 'previousMarker', label: 'Previous marker' },
+    { command: 'GDS-Lens.nextMarker', action: 'nextMarker', label: 'Next marker' },
     { command: 'GDS-Lens.goToCoordinate', label: 'Go to a coordinate' },
     { command: 'GDS-Lens.compareWithCurrent', label: 'Compare with another layout', editorOnly: true }
 ];
@@ -700,6 +702,7 @@ function buildShortcutRows(packageJSON, { compare = false } = {}) {
         const binding = bindings.find((b) => b.command === row.command);
         if (!binding || !binding.key) continue;
         rows.push({
+            ...(row.action ? { action: row.action } : {}),
             label: row.label,
             keys: {
                 mac: formatKeybinding(binding.mac || binding.key, 'mac'),

@@ -1,0 +1,44 @@
+# Lints, builds and tests every push and pull request. It never publishes:
+# no secrets, no tags, no release steps. The last step builds a .vsix only to
+# check the manifest (contributes, engines, @types/vscode) and throws it away.
+#
+# `npm ci` installs gds-lens from the npm registry at the version
+# package-lock.json pins, not a local `npm link`, so this tests the extension
+# against the library as released.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch or pull request cancels the run in progress.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Every rule is a warning, so fail on any: clean means clean.
+      - run: npm run lint -- --max-warnings=0
+
+      - run: npm run compile
+
+      - run: npm test
+
+      - name: Package check (builds a .vsix, does not publish)
+        run: npx @vscode/vsce@4.0.0 package -o /tmp/check.vsix

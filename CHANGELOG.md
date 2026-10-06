@@ -1,10 +1,17 @@
 # Change Log
 
-## [Unreleased]
+## [1.10.0] - 2026-10-05
 
+- **Click to inspect.** Click a shape to see its layer, cell path, bounding
+  box, size, area, perimeter and vertex count; click again to step to the shape
+  underneath. The card can show the cell as the new top, frame the shape, or
+  copy the details. (gds-lens 1.6.0.)
+- The viewer's tooltips show your current keys for the hierarchy and find
+  instead of always "(H)" and "(/)".
+- The `.lyp` file picker's filter is labeled "Layer Properties".
 - **Show any cell as the new top.** Click **⤒** on a hierarchy row to show
   only that cell, at its own origin, and **Back to all** or `Esc` to return.
-  (gds-lens, unreleased.)
+  (gds-lens 1.6.0.)
 - **Live preview from Python.** In desktop VS Code, a layout script's
   `c.show()` opens the layout in GDS Lens, or reloads it in place if it is
   already open, with no change to your Python code. GDS Lens listens on port
@@ -14,7 +21,7 @@
 - **Display toggles are remembered.** Infill, Text, Ports, Merge Overlaps and
   Grid start the way you last set them, in every layout and in Compare. Text
   turning on to show a label search's result does not change the remembered
-  setting. (gds-lens, unreleased.)
+  setting. (gds-lens 1.6.0.)
 - **Rebindable keyboard shortcuts.** `H`, `/`, `M`, `[` and `]` are now VS Code
   commands (**GDS Lens: Toggle Hierarchy**, **Find Cell or Label**, **Toggle
   Measure Mode**, **Previous Marker** and **Next Marker**), so you can change
@@ -28,9 +35,8 @@
 - **Getting started walkthrough.** **GDS Lens: Get Started**, or the Welcome
   page, walks through opening a layout, layer colors, getting around, comparing
   layouts and live preview.
-- **Installs on VS Code 1.85 and later**, down from 1.125. Editors built on an
-  older VS Code, such as Cursor, Windsurf and VSCodium, can now install it from
-  Open VSX.
+- **Installs on VS Code 1.85 and later**, down from 1.125, so editors built on
+  an older VS Code can install it from Open VSX.
 - Commands are grouped under **GDS Lens** in the Command Palette, for example
   **GDS Lens: Go to Coordinate**. They were titled `GDSLens: ...`.
 - The README describes the current instancing rule and the reprojection used
@@ -637,8 +643,8 @@
 ## [1.4.1] - 2026-08-05
 
 - GDS Lens is now published on [Open VSX](https://open-vsx.org/extension/ethml/GDS-Lens)
-  as well as the VS Code Marketplace, so it can be installed in Cursor,
-  Windsurf, VSCodium, code-server, Gitpod and Theia.
+  as well as the VS Code Marketplace, so it can be installed in editors that
+  use Open VSX.
 - Layer outlines render substantially faster, most noticeably on large designs
   and when zoomed out. Each polygon's boundary was drawn as a `GL_LINE_LOOP`,
   with primitive-restart markers separating one polygon from the next. No

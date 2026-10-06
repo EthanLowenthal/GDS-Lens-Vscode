@@ -538,7 +538,7 @@ class GdsEditorProvider {
                         // there is no local disk to fall back on and the only
                         // readable files are the ones in the opened workspace.
                         defaultUri: vscode.Uri.joinPath(document.uri, '..'),
-                        filters: { 'the .lyp/.lyrdb tooling Properties': ['lyp'] }
+                        filters: { 'Layer Properties': ['lyp'] }
                     };
                     const fileUri = await vscode.window.showOpenDialog(options);
                     if (fileUri && fileUri[0]) {

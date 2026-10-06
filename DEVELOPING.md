@@ -30,9 +30,11 @@ from there as a package.
   `node_modules` out of the `.vsix` entirely. It takes the library's
   `inline-wasm` payload rather than its default `web` one; see "Why the wasm is
   embedded" below.
-- `test/fixtures/` - sample layouts and marker databases, kept here for
-  `npm run test:web`. The unit tests moved to the library with the code they
-  cover.
+- `test/unit/` - `node:test` tests for the extension host and
+  `src/webview-host.js`; see "Tests" below. The viewer's own tests are in the
+  library with the code they cover.
+- `test/fixtures/` - sample layouts and marker databases, used by the unit
+  tests and by `npm run test:web`.
 
 What the host still imports directly from the library, rather than through the
 webview, is the pair of pure modules that run in the extension host itself:
@@ -539,16 +541,52 @@ Q3 2026. Microsoft needs a GitHub Actions story before retiring PATs on
 ship in time. If it has not shipped by ~November 2026, fall back to
 `--azure-credential`.
 
+## Tests
+
+```sh
+npm test             # compiles first (pretest), then node --test test/unit/
+```
+
+The tests run in plain Node with a stub `vscode` module
+(`test/unit/vscode-stub.cjs`); no VS Code, browser or Python is needed. Each
+file runs in its own process, and the whole run takes well under a second.
+
+- `display-prefs.test.cjs` - the display toggles `src/shared.cjs` saves and
+  pushes, and how `src/webview-host.js` hands them to the viewer.
+- `shortcuts.test.cjs` - the shortcut rows for each platform, the
+  `GDS-Lens.viewerKeys` context key, which editor or comparison panel an
+  action command goes to, and the webview side of the same protocol.
+- `live-server.test.cjs` - the live preview server, over real sockets on
+  127.0.0.1. A small client in the test sends the same request bytes as
+  `show()` and checks the reply the way that client reads it: JSON with type
+  `open` or `reload`, a `version` no newer than 0.4.1, a parseable
+  `klayout_version`, at most 1024 bytes, and plain text for errors. It listens
+  on a free ephemeral port, never 8082.
+
+The second and third load the bundle, `dist/extension.js`, rather than
+`src/`, so they test what ships. That is why `npm test` runs `npm run compile`
+first. Tests within a file share one activated extension and run in order.
+
+The tests stub the viewer side, so they do not depend on the version of
+`gds-lens` installed. CI (`.github/workflows/ci.yml`) runs on every push and
+pull request: `npm ci`, lint with no warnings allowed, compile, `npm test`,
+and `vsce package` as a manifest check. It never publishes and uses no
+secrets. `npm ci` installs `gds-lens` from the registry at the version
+`package-lock.json` pins, so a change that needs an unreleased library feature
+fails in CI until the library is published and the dependency bumped.
+
 ## Linting
 
 `npm run lint` (`eslint .`). Clean means clean: the config reports nothing on
 the tree as it stands, so anything it prints is new.
 
 The config is split per environment rather than applied as one block, because
-`no-undef` is only worth having if it knows which one a file is in. Two remain
-here now that the viewer has moved out: the extension host (worker globals,
-*not* Node's, so a `Buffer` or `process` that would break on the web is caught
-here) and the build scripts under `scripts/` (real Node, ESM, never shipped).
+`no-undef` is only worth having if it knows which one a file is in: the
+extension host (worker globals, *not* Node's, so a `Buffer` or `process` that
+would break on the web is caught here), the scripts loaded into a webview
+(browser globals), the build scripts under `scripts/` (real Node, ESM, never
+shipped) and the unit tests under `test/` (real Node, CommonJS, never
+shipped).
 The webview, Worker and parser blocks live in the library's own config. It
 skips `dist/`, which is
 esbuild's bundle of our own sources plus the viewer payload copied out of

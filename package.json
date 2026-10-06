@@ -2,7 +2,7 @@
   "name": "GDS-Lens",
   "displayName": "GDS Lens: GDSII & OASIS Layout Viewer",
   "description": "GPU-accelerated GDSII and OASIS viewer. C++ parser and WebGL2 renderer in WebAssembly. 100M+ polygon layouts, photonic ports with arrows, .lyp colors, ruler, DRC/LVS markers. Runs on vscode.dev.",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "icon": "images/logo.png",
   "license": "MIT",
   "categories": [
@@ -64,6 +64,8 @@
     "vscode:prepublish": "npm run compile",
     "test:web": "vscode-test-web --browserType=chromium --extensionDevelopmentPath=. test/fixtures",
     "lint": "eslint .",
+    "pretest": "npm run compile",
+    "test": "node --test \"test/unit/*.test.cjs\"",
     "package": "npx @vscode/vsce package -o GDS-Lens-$npm_package_version.vsix",
     "bench": "node scripts/bench.mjs",
     "publish:vsce": "sh scripts/with-env.sh npx @vscode/vsce publish --packagePath GDS-Lens-$npm_package_version.vsix",
@@ -77,7 +79,7 @@
     "@xmldom/xmldom": "^0.9.10",
     "esbuild": "^0.28.2",
     "eslint": "^10.5.0",
-    "gds-lens": "1.5.0",
+    "gds-lens": "1.6.0",
     "globals": "^17.11.0"
   },
   "repository": {

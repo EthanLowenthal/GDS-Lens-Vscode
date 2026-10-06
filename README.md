@@ -29,6 +29,7 @@ Drag to pan. Scroll to zoom.
 - **Large layouts**: GPU instancing draws repeated cells once. Up to 820M polygons once flattened, a 37 MB file on screen in 0.25 s, and smooth panning and zooming on a 127M polygon layout.
 - **Ports**: photonic and electrical ports stored in the layout's metadata are drawn with orientation arrows, colored by type, and listed for the top cell.
 - **Layer panel**: automatic colors, per-layer toggles, filter, solo, shape counts, bulk show/hide. Load a `.lyp` layer properties file to match your PDK colors.
+- **Inspect**: click a shape to see its layer, cell path, bounding box, area and perimeter.
 - **Hierarchy**: browse the cell tree, frame any cell, outline every placement of it, or show any cell as the new top.
 - **Live preview**: a Python layout script's `show()` call opens or reloads the layout in VS Code.
 - **Find**: search cells and text labels by name.
@@ -40,6 +41,22 @@ Drag to pan. Scroll to zoom.
 - **Theme**: follows your VS Code light or dark theme.
 
 ## Use the viewer
+
+### Inspect a shape
+
+In Pan mode, click a shape to select it. Of the shapes under the pointer, the
+one whose outline is nearest is chosen, so clicking inside a small shape picks
+it rather than a large box around it, and clicking on the large box's edge
+picks the box. The selected shape is outlined on the canvas and a
+card shows its layer, the cell it belongs to and that cell's path from the top
+(including which copy of an array you clicked), its bounding box, width and
+height, area, perimeter and vertex count. Click the same spot again to step to
+the shape underneath. Hidden layers are skipped. The card's buttons show the
+cell as the new top, frame the shape, or copy the details as text. Click empty
+space or press `Esc` to clear the selection.
+
+The first click in a layout reads the file's hierarchy once, which takes about
+as long as opening it; clicks after that are immediate.
 
 ### Hierarchy
 
