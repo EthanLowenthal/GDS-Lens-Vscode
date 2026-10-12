@@ -42,7 +42,7 @@ Drag to pan. Scroll to zoom.
 
 ## Use the viewer
 
-### Inspect a shape
+### Inspect a shape or label
 
 In Pan mode, click a shape to select it. Of the shapes under the pointer, the
 one whose outline is nearest is chosen, so clicking inside a small shape picks
@@ -54,6 +54,11 @@ height, area, perimeter and vertex count. Click the same spot again to step to
 the shape underneath. Hidden layers are skipped. The card's buttons show the
 cell as the new top, frame the shape, or copy the details as text. Click empty
 space or press `Esc` to clear the selection.
+
+With **Display > Text** on, labels can be selected too: click a label's text.
+Its card shows the text, layer, cell path and anchor position, and **Frame**
+centers on the anchor. A label and a shape under the same point are stepped
+through together, the label first when you click on its text.
 
 The first click in a layout reads the file's hierarchy once, which takes about
 as long as opening it; clicks after that are immediate.

@@ -1,5 +1,11 @@
 # Change Log
 
+## [1.11.0] - 2026-10-12
+
+- **Click a text label to inspect it.** With **Display > Text** on, clicking a
+  label's text selects it and shows its text, layer, cell path and anchor
+  position. (gds-lens 1.7.0.)
+
 ## [1.10.0] - 2026-10-05
 
 - **Click to inspect.** Click a shape to see its layer, cell path, bounding
