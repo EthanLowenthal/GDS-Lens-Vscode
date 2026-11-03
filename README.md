@@ -50,15 +50,18 @@ In Pan mode, click a shape to select it. Of the shapes under the pointer, the
 one whose outline is nearest is chosen, so clicking inside a small shape picks
 it rather than a large box around it, and clicking on the large box's edge
 picks the box. The selected shape is outlined on the canvas and a
-card shows its layer, the cell it belongs to and that cell's path from the top
-(including which copy of an array you clicked), its bounding box, width and
-height, area, perimeter and vertex count. Click the same spot again to step to
-the shape underneath. Hidden layers are skipped. The card's buttons show the
-cell as the new top, frame the shape, or copy the details as text. Click empty
-space or press `Esc` to clear the selection.
+card shows its layer, the cell it belongs to (click it to see the path from
+the top, including which copy of an array you clicked), its bounding box, width
+and height, area, perimeter, vertex count and GDSII or OASIS properties. Click
+the same spot again to step to the shape underneath. Hidden layers are skipped.
+The card's buttons show the cell as the new top, center the view on the shape,
+open **Details**, or copy the details as text. **Details** lists every property
+in full, along with the properties of each cell and reference on the path to
+the shape. In the hierarchy panel, **ⓘ** shows a cell's or the library's
+properties. Click empty space or press `Esc` to clear the selection.
 
 With **Display > Text** on, labels can be selected too: click a label's text.
-Its card shows the text, layer, cell path and anchor position, and **Frame**
+Its card shows the text, layer, cell path and anchor position, and **Center**
 centers on the anchor. A label and a shape under the same point are stepped
 through together, the label first when you click on its text.
 

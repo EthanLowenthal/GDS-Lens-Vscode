@@ -1,5 +1,16 @@
 # Change Log
 
+## [Unreleased]
+
+- **Layout properties.** The inspect card lists a selected shape's or label's
+  GDSII and OASIS properties, and a new **Details** button shows the whole
+  record: every property in full, and the properties of each cell and
+  reference on the path to it. In the hierarchy panel, **ⓘ** on a row or the
+  header shows a cell's or the library's properties.
+- The inspect card shows the cell that holds the selection in place of the
+  full path; click it to see the path.
+- The inspect card's **Frame** button is now **Center**.
+
 ## [1.11.0] - 2026-10-12
 
 - **Click a text label to inspect it.** With **Display > Text** on, clicking a
