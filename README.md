@@ -14,6 +14,8 @@ else installed, including on vscode.dev.
 [Try it in the browser](https://lowenth.al/GDS-Lens/) by dropping a layout on
 the page. The extension is the same viewer inside VS Code.
 
+Built on the [gds-lens](https://github.com/EthanLowenthal/GDS-Lens) viewer package.
+
 ## Install
 
 Search for *GDS Lens* in the Extensions view, or install it from the
