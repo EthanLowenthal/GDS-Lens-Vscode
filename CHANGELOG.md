@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.11.1] - 2026-11-03
+
 - **Layout properties.** The inspect card lists a selected shape's or label's
   GDSII and OASIS properties, and a new **Details** button shows the whole
   record: every property in full, and the properties of each cell and
@@ -9,7 +11,7 @@
   header shows a cell's or the library's properties.
 - The inspect card shows the cell that holds the selection in place of the
   full path; click it to see the path.
-- The inspect card's **Frame** button is now **Center**.
+- The inspect card's **Frame** button is now **Center**. (gds-lens 1.7.1.)
 
 ## [1.11.0] - 2026-10-12
 
