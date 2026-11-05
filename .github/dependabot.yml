@@ -1,0 +1,13 @@
+# Opens a pull request when a GitHub Action used in .github/workflows has a
+# new version, so runtime deprecations (such as an action's Node version)
+# arrive as an update instead of a warning in the run log. All action updates
+# found in one check go into a single pull request.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
