@@ -31,7 +31,7 @@ Drag to pan. Scroll to zoom.
 - **Large layouts**: GPU instancing draws repeated cells once. Up to 820M polygons once flattened, a 37 MB file on screen in 0.25 s, and smooth panning and zooming on a 127M polygon layout.
 - **Ports**: photonic and electrical ports stored in the layout's metadata are drawn with orientation arrows, colored by type, and listed for the top cell.
 - **Layer panel**: automatic colors, per-layer toggles, filter, solo, shape counts, bulk show/hide. Load a `.lyp` layer properties file to match your PDK colors.
-- **Inspect**: click a shape to see its layer, cell path, bounding box, area and perimeter.
+- **Inspect**: click a shape or text label to see its layer, cell path, bounding box, area, perimeter and GDSII or OASIS properties.
 - **Hierarchy**: browse the cell tree, frame any cell, outline every placement of it, or show any cell as the new top.
 - **Live preview**: a Python layout script's `show()` call opens or reloads the layout in VS Code.
 - **Find**: search cells and text labels by name.
@@ -76,8 +76,8 @@ the outlines. A cell placed more than once by its parent is one row marked `×N`
 
 To look at one cell on its own, click **⤒** on its row (**Show as new top**).
 The view then shows only that cell and what it places, at the cell's own
-origin, and the layer counts, search, ports and hierarchy follow it. **Back to
-all** above the tree, or `Esc`, returns to the full layout. A file with several
+origin, and the layer counts, search, ports and hierarchy follow it. The
+**Back to** button above the tree, or `Esc`, returns to the full layout. A file with several
 top cells lists each as a root row, so this is also how to view one of them
 alone. Each switch re-reads the layout, so on a very large file it takes about
 as long as opening it.
@@ -95,8 +95,8 @@ Every layer gets a color and a row with a toggle and its shape count in this
 file, with no setup. Filter by layer number, datatype, name, or group.
 **Show: All | None | Invert** applies to the filtered rows. Click **S** to solo
 a layer; click it again to restore the previous selection. To use your PDK's
-colors and groups, click **Load .lyp File** in Display. The `.lyp` is
-remembered per layout.
+colors and groups, click **Load .lyp File** in Display. The `.lyp` applies to
+every layout you open after that, until you click ✕ on its row to unload it.
 
 ### Display
 
@@ -110,6 +110,7 @@ remembered per layout.
 | **Load .lyp File** | Custom layer colors |
 | **Load Marker File** | DRC/LVS marker database |
 | **Reset View** | Refit the layout to the window |
+| **Keyboard Shortcuts** | List the viewer's keyboard shortcuts |
 
 Infill, Text, Ports, Merge Overlaps and Grid are remembered: the next layout
 you open starts with them set the way you left them.
@@ -138,10 +139,15 @@ run **GDS Lens: Go to Coordinate** and paste it. Units `nm`, `um`, `µm`, and
 ### DRC/LVS markers
 
 Click **Load Marker File** and choose a `.lyrdb` report database or an ASCII
-DRC results file. Violations draw as a red overlay above all layers. The
-**Markers** panel lists each rulecheck with a visibility toggle. Click an item
-to zoom to it, or press `[` and `]` to step through. The marker file is
-remembered per layout.
+DRC results file. The **Markers** folder lists each rulecheck with its marker
+count. Rulechecks start hidden, so nothing is drawn until you click a marker's
+row, which zooms to it and draws it, or turn on **◼ visible** in a rulecheck to
+draw all of its markers as a red overlay above all layers.
+
+Press `[` and `]` to step through markers. With a marker selected in a hidden
+rulecheck, stepping stays within that rulecheck; otherwise it goes through
+every rulecheck you have turned on. **Opacity** fades the whole overlay. The
+marker file is remembered per layout; click ✕ on its row to unload it.
 
 ### Ports
 

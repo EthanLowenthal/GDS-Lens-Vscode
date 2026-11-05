@@ -1,7 +1,7 @@
 {
   "name": "GDS-Lens",
   "displayName": "GDS Lens: GDSII & OASIS Layout Viewer",
-  "description": "GPU-accelerated GDSII and OASIS viewer. C++ parser and WebGL2 renderer in WebAssembly. 100M+ polygon layouts, photonic ports with arrows, .lyp colors, ruler, DRC/LVS markers. Runs on vscode.dev.",
+  "description": "GPU-accelerated GDSII and OASIS viewer for layouts of 100M+ polygons. Layer colors from .lyp files, DRC/LVS markers, layout compare, live preview from Python scripts, ports and a ruler. Runs on vscode.dev.",
   "version": "1.11.2",
   "icon": "images/logo.png",
   "license": "MIT",
@@ -323,6 +323,17 @@
             "description": "Pan, zoom, search cells and labels, measure, and jump to a coordinate.\n[Go to Coordinate](command:GDS-Lens.goToCoordinate)",
             "media": {
               "markdown": "walkthrough/navigate.md"
+            },
+            "completionEvents": [
+              "onStepSelected"
+            ]
+          },
+          {
+            "id": "markers",
+            "title": "Browse DRC and LVS markers",
+            "description": "Load a .lyrdb or ASCII DRC results file from Display > Load Marker File, then click a marker to zoom to it.",
+            "media": {
+              "markdown": "walkthrough/markers.md"
             },
             "completionEvents": [
               "onStepSelected"

@@ -2,7 +2,8 @@
 
 Every layer gets a color with no setup. To use your PDK's colors and layer
 names, open **Display** in the panel and click **Load .lyp File**. The `.lyp`
-is applied to every layout you open after that, until you unload it.
+is applied to every layout you open after that, until you click ✕ on its
+row to unload it.
 
 In the **Layers** list:
 

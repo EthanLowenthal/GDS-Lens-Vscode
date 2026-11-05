@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- The **Get Started** walkthrough has a step for DRC and LVS markers, and the
+  compare step says which layout is A and which is B.
+
 ## [1.11.2] - 2026-11-04
 
 - Cell metadata stored as `META('key')=value` strings shows one property row
