@@ -6,8 +6,11 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENCE.md)
 
 GPU-accelerated GDSII and OASIS viewer for VS Code, built in C++ and compiled
-to WebAssembly. It renders layouts of over 100 million polygons with nothing
-else installed, including on vscode.dev.
+to WebAssembly. It renders layouts of over 100 million polygons.
+
+Everything it needs ships inside the extension: no separate runtime, no native
+binaries, nothing else to install. It runs in desktop VS Code, over Remote SSH,
+WSL and dev containers, and in the browser on vscode.dev and github.dev.
 
 ![GDS Lens rendering a GDSII layout](images/example.png)
 
