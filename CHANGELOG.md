@@ -2,8 +2,13 @@
 
 ## [Unreleased]
 
+## [1.11.3] - 2026-11-05
+
 - The **Get Started** walkthrough has a step for DRC and LVS markers, and the
   compare step says which layout is A and which is B.
+- The README and the Marketplace description say where the extension runs,
+  show compare and the marker browser, and explain how to make GDS Lens the
+  default editor for layout files.
 
 ## [1.11.2] - 2026-11-04
 

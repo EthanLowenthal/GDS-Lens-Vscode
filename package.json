@@ -2,7 +2,7 @@
   "name": "GDS-Lens",
   "displayName": "GDS Lens: GDSII & OASIS Layout Viewer",
   "description": "GPU-accelerated GDSII and OASIS viewer for layouts of 100M+ polygons. Layer colors from .lyp files, DRC/LVS markers, layout compare, live preview from Python scripts, ports and a ruler. Everything is built in, with nothing else to install, so it runs on your desktop, over Remote SSH, WSL or containers, and in the browser on vscode.dev.",
-  "version": "1.11.2",
+  "version": "1.11.3",
   "icon": "images/logo.png",
   "license": "MIT",
   "categories": [
