@@ -497,25 +497,13 @@ both policies.
 
 ### Publishing by hand
 
-Trusted publishing only works inside GitHub Actions. To publish from a laptop:
+Trusted publishing only works inside GitHub Actions. If the workflow cannot
+publish, `npm run package` builds `GDS-Lens-<version>.vsix`, and then:
 
-- **Marketplace:** run `npm run package` and upload the
-  `GDS-Lens-<version>.vsix` on the publisher management page. `npm run
-  publish:vsce` needs a global Azure DevOps personal access token in
-  `VSCE_PAT`, and Azure DevOps stops accepting those on 1 December 2026.
-- **Open VSX:** put an access token from your open-vsx.org profile in
-  `OVSX_PAT` in `.env.publish` (copy
-  [`.env.publish.example`](.env.publish.example)), then run
-  `npm run publish:ovsx`. `scripts/with-env.sh` loads the file so the token
-  never lands in shell history.
-
-Before the first Open VSX publish you must sign the Eclipse Publisher Agreement
-(with an Eclipse account whose email matches your GitHub account) and claim the
-namespace, which has to match `publisher` in `package.json`:
-
-```sh
-sh scripts/with-env.sh npx ovsx create-namespace ethml
-```
+- **Marketplace:** upload the `.vsix` on the
+  [publisher management page](https://marketplace.visualstudio.com/manage/publishers/ethml).
+- **Open VSX:** create an access token on your open-vsx.org profile and run
+  `npx ovsx@1.3.0 publish GDS-Lens-<version>.vsix -p <token>`.
 
 ## Tests
 

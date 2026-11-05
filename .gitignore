@@ -204,5 +204,5 @@ dist
 .ionide
 
 # End of https://www.toptal.com/developers/gitignore/api/macos,visualstudiocode,node
-# Publishing tokens (see .env.publish.example)
+# Old local publishing tokens; releases use trusted publishing now
 .env.publish
