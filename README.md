@@ -33,6 +33,8 @@ the page. The extension is the same viewer inside VS Code.
 - **Auto reload**: when a generator script rewrites the file, the view updates and keeps your camera and layer visibility.
 - **Theme**: follows your VS Code light or dark theme.
 
+![Two layout revisions compared with differences highlighted, and a DRC marker selected in the marker browser](images/compare-markers.png)
+
 ## Install
 
 Search for *GDS Lens* in the Extensions view, or install it from the
