@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [1.11.2] - 2026-11-04
+
+- Cell metadata stored as `META('key')=value` strings shows one property row
+  per entry instead of one long comma-joined value, with each value laid out
+  as `key: value` lines. This applies to the inspect card, Details and Copy.
+- In a shape's Details, a cell's properties sit straight under its heading
+  when its reference has none. (gds-lens 1.7.2.)
+
 ## [1.11.1] - 2026-11-03
 
 - **Layout properties.** The inspect card lists a selected shape's or label's
