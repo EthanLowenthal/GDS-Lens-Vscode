@@ -17,18 +17,6 @@ WSL and dev containers, and in the browser on vscode.dev and github.dev.
 [Try it in the browser](https://lowenth.al/GDS-Lens/) by dropping a layout on
 the page. The extension is the same viewer inside VS Code.
 
-Built on the [gds-lens](https://github.com/EthanLowenthal/GDS-Lens) viewer package.
-
-## Install
-
-Search for *GDS Lens* in the Extensions view, or install it from the
-[Marketplace](https://marketplace.visualstudio.com/items?itemName=ethml.GDS-Lens)
-or [Open VSX](https://open-vsx.org/extension/ethml/GDS-Lens). Then open any
-`.gds`, `.oas`, or `.oasis` file. Gzipped files open too. The format is read
-from the file's contents, not its extension.
-
-Drag to pan. Scroll to zoom.
-
 ## Features
 
 - **Large layouts**: GPU instancing draws repeated cells once. Up to 820M polygons once flattened, a 37 MB file on screen in 0.25 s, and smooth panning and zooming on a 127M polygon layout.
@@ -44,6 +32,22 @@ Drag to pan. Scroll to zoom.
 - **Compare layouts**: open two files overlaid in one viewer, crossfade between them, and highlight where they differ.
 - **Auto reload**: when a generator script rewrites the file, the view updates and keeps your camera and layer visibility.
 - **Theme**: follows your VS Code light or dark theme.
+
+## Install
+
+Search for *GDS Lens* in the Extensions view, or install it from the
+[Marketplace](https://marketplace.visualstudio.com/items?itemName=ethml.GDS-Lens)
+or [Open VSX](https://open-vsx.org/extension/ethml/GDS-Lens). Then open any
+`.gds`, `.oas`, or `.oasis` file. Gzipped files open too. The format is read
+from the file's contents, not its extension.
+
+Drag to pan. Scroll to zoom.
+
+If another extension that opens layout files is installed, VS Code may open
+them there instead. Right-click the file's tab, choose **Reopen Editor
+With...**, and pick **GDS Lens**. To make it the default, run **Reopen Editor
+With...** again and choose **Configure default editor for '*.gds'...**, and do
+the same for `.oas` files.
 
 ## Use the viewer
 
@@ -223,45 +227,6 @@ server is not available on vscode.dev or github.dev, because a browser cannot
 open a network port. GDS Lens ignores the `libraries`, `l2n`, `technology` and
 `markers` that `show()` can send; they are named in the log `show()` prints.
 
-## Performance
-
-Parsing, flattening, and triangulation run in a WebAssembly worker, off the
-main thread, so the editor stays responsive while a file loads. Drawing is
-WebGL2 on the GPU, with one vertex buffer per layer.
-
-A cell is GPU-instanced based on what instancing saves, not on how often it is
-placed. Instancing avoids storing a flattened copy of every placement, but
-costs a draw call per cell per layer in every frame. A cell is instanced when
-its flattened copies would take a lot of memory, so a cell placed 100,000
-times still instances, while a small cell placed a dozen times is flattened
-into its layer's buffer.
-
-Panning and zooming a very large layout reprojects the last render instead of
-redrawing the geometry, then does one real render when the camera stops. The
-frame it settles on is the same as one drawn without reprojection. Merge
-Overlaps and the compare difference highlight are not covered and redraw
-every frame.
-
-Measured on generated stress layouts and a 37 MB test layout:
-
-- The 37 MB GDSII file is on screen in about 0.25 s.
-- Dragging a 127M polygon layout takes 8.4 ms a frame, down from 606 ms.
-- A test chip of 2.5M polygons in 8,000 distinct cells draws a frame in under
-  1 ms, down from 108 ms, and loads in 1.27 s, down from 4.35 s.
-
-Everything is held in the 4 GB address space of 32-bit wasm, which sets these
-limits on what loads. The limit depends on how much of the layout is distinct
-geometry:
-
-| Layout | Limit |
-| --- | --- |
-| Repeated cells (100 cells of 40 rectangles, placed 20M times) | 820M polygons once flattened |
-| Flat rectangles | 10M polygons |
-| Flat 40-vertex curves, like waveguide routing | 2.3M polygons |
-
-To measure your own files, run `npm run bench -- <file>...`. See
-[Benchmarking](DEVELOPING.md#benchmarking).
-
 ## Keyboard shortcuts
 
 | Key | Action |
@@ -310,7 +275,49 @@ and its **Customize...** button opens Keyboard Shortcuts filtered to GDS Lens.
 | `GDS-Lens.liveServer.enabled` | `true` | Listen for `show()` from Python layout scripts (desktop only) |
 | `GDS-Lens.liveServer.port` | `8082` | Port for that server. `show()` always uses 8082 |
 
+## Performance
+
+Parsing, flattening, and triangulation run in a WebAssembly worker, off the
+main thread, so the editor stays responsive while a file loads. Drawing is
+WebGL2 on the GPU, with one vertex buffer per layer.
+
+A cell is GPU-instanced based on what instancing saves, not on how often it is
+placed. Instancing avoids storing a flattened copy of every placement, but
+costs a draw call per cell per layer in every frame. A cell is instanced when
+its flattened copies would take a lot of memory, so a cell placed 100,000
+times still instances, while a small cell placed a dozen times is flattened
+into its layer's buffer.
+
+Panning and zooming a very large layout reprojects the last render instead of
+redrawing the geometry, then does one real render when the camera stops. The
+frame it settles on is the same as one drawn without reprojection. Merge
+Overlaps and the compare difference highlight are not covered and redraw
+every frame.
+
+Measured on generated stress layouts and a 37 MB test layout:
+
+- The 37 MB GDSII file is on screen in about 0.25 s.
+- Dragging a 127M polygon layout takes 8.4 ms a frame, down from 606 ms.
+- A test chip of 2.5M polygons in 8,000 distinct cells draws a frame in under
+  1 ms, down from 108 ms, and loads in 1.27 s, down from 4.35 s.
+
+Everything is held in the 4 GB address space of 32-bit wasm, which sets these
+limits on what loads. The limit depends on how much of the layout is distinct
+geometry:
+
+| Layout | Limit |
+| --- | --- |
+| Repeated cells (100 cells of 40 rectangles, placed 20M times) | 820M polygons once flattened |
+| Flat rectangles | 10M polygons |
+| Flat 40-vertex curves, like waveguide routing | 2.3M polygons |
+
+To measure your own files, run `npm run bench -- <file>...`. See
+[Benchmarking](DEVELOPING.md#benchmarking).
+
 ## Release notes
 
 See [`CHANGELOG.md`](CHANGELOG.md). Build instructions are in
 [`DEVELOPING.md`](DEVELOPING.md).
+
+The viewer itself is the [gds-lens](https://github.com/EthanLowenthal/GDS-Lens)
+package, which you can also embed in a web page.
