@@ -41,4 +41,4 @@ jobs:
       - run: npm test
 
       - name: Package check (builds a .vsix, does not publish)
-        run: npx @vscode/vsce@4.0.0 package -o /tmp/check.vsix
+        run: npx @vscode/vsce@4.1.0 package -o /tmp/check.vsix

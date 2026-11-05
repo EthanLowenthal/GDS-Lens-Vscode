@@ -442,104 +442,80 @@ The extension goes to two registries: the **VS Code Marketplace** (VS Code
 proper) and **Open VSX** (Cursor, Windsurf, VSCodium, code-server, Gitpod,
 Theia). Both should ship the same build.
 
-### One-time setup
-
-Copy [`.env.publish.example`](.env.publish.example) to `.env.publish` and fill
-in both tokens. That file is gitignored and excluded from the packaged `.vsix`
-via `.vscodeignore`; `scripts/with-env.sh` loads it so no token ever lands in
-shell history.
-
-- `VSCE_PAT` - an Azure DevOps personal access token, scoped **Marketplace →
-  Manage**, with organization set to **All accessible organizations**. Azure
-  caps PAT lifetime at one year, so this expires and has to be reissued.
-
-  > **Deadline: 1 December 2026.** Azure DevOps retires *global* PATs on that
-  > date - and "All accessible organizations" is exactly what makes this one
-  > global, so `VSCE_PAT` publishing stops working then. See
-  > [Migrating off `VSCE_PAT`](#migrating-off-vsce_pat) below. `OVSX_PAT` is an
-  > Eclipse token and is unaffected.
-- `OVSX_PAT` - from your open-vsx.org profile. Before the first publish you
-  must sign the Eclipse Publisher Agreement (with an Eclipse account whose
-  email matches your GitHub account) and claim the namespace, which has to
-  match `publisher` in `package.json`:
-
-  ```sh
-  sh scripts/with-env.sh npx ovsx create-namespace ethml
-  ```
-
-  The namespace starts unverified, which shows a warning on the listing;
-  ownership verification is requested via an issue on the
-  `EclipseFdn/open-vsx.org` repo.
+Releases run in GitHub Actions
+([`.github/workflows/publish.yml`](.github/workflows/publish.yml)), triggered
+by pushing a version tag. No registry token is stored anywhere: each publish
+job gets an OIDC token from GitHub and exchanges it for a short-lived
+publishing token (trusted publishing), `vsce publish --oidc` for the
+Marketplace and `ovsx publish --trusted-publishing` for Open VSX.
 
 ### Releasing
 
-Bump `version` in `package.json`, update `CHANGELOG.md`, make sure the
-`gds-lens` build you are packaging against is current (`npm run compile` copies
-whatever is in that package's `dist/inline-wasm/`, so a stale library build
-ships silently), then:
+Bump `version` in `package.json`, move the `## [Unreleased]` entries in
+`CHANGELOG.md` under the new version, commit, then tag and push:
 
 ```sh
-npm run package       # -> GDS-Lens-<version>.vsix
-npm run publish:all   # package + both registries
+git push origin main
+git tag v1.12.0 && git push origin v1.12.0
 ```
 
-`publish:vsce` and `publish:ovsx` can be run individually; both publish the
-prebuilt `GDS-Lens-<version>.vsix` rather than repackaging, so the two
-registries get byte-identical artifacts.
+The workflow lints, checks that the tag matches `package.json`, runs the
+tests, packages one `.vsix`, then publishes that same file to both registries
+in parallel. If one registry fails, re-run only that job from the Actions page;
+it reuses the packaged `.vsix`.
+
+The workflow builds against the `gds-lens` version `package-lock.json` pins,
+installed from npm, so a library change has to be published and the
+dependency bumped before it can ship (see
+[Bumping the library](#bumping-the-library)).
+
+Running the workflow by hand (**Actions > Publish > Run workflow**) only builds
+and packages. Use it to check a release would go through without publishing.
 
 Marketplace metadata (`displayName`, `description`, `categories`, `keywords`,
 `galleryBanner`) only takes effect on the next publish - editing it without
 shipping a new version changes nothing on the listing.
 
-### Migrating off `VSCE_PAT`
+### One-time setup
 
-Global PATs stop working on 1 December 2026. Two replacements exist; only the
-Marketplace side is affected, so Open VSX keeps using `OVSX_PAT` either way.
+Each registry needs a trusted-publisher policy that names the repository
+owner `EthanLowenthal`, the repository `GDS-Lens-Vscode`, the workflow file
+`publish.yml` and the environment `release`. The exchange is refused if any of
+them differs, so renaming the workflow file or the environment means updating
+both policies.
 
-**`vsce publish --oidc` - the intended target, but NOT YET RELEASED.** As of
-vsce 3.9.2 this flag does not exist (`unknown option '--oidc'`); it is
-documented only on the vsce `main` branch README. Re-check with
-`npx @vscode/vsce publish --help | grep oidc` before planning around it.
+- **VS Code Marketplace.** On the
+  [publisher management page](https://marketplace.visualstudio.com/manage/publishers/ethml),
+  add a trusted publishing policy with the values above. Needs
+  `@vscode/vsce` 4.1.0 or later; older versions have no `--oidc`.
+- **Open VSX.** In the `ethml` namespace settings on open-vsx.org, add a
+  trusted publisher with the same values. Needs `ovsx` 1.2.0 or later.
+- **GitHub.** The `release` environment is created the first time a job uses
+  it. To require an approval before each publish, or to accept only `v*`
+  tags, add those rules under **Settings > Environments > release**; the
+  policies above do not need to change.
 
-When it ships, it publishes from GitHub Actions with no stored Marketplace
-secret at all: the workflow requests a GitHub OIDC token for the
-`marketplace.visualstudio.com` audience and exchanges it for a short-lived
-credential. Setup is a trusted-publishing policy on the Marketplace naming this
-repo and workflow, plus `id-token: write` on the job:
+### Publishing by hand
 
-```yaml
-permissions:
-  contents: read
-  id-token: write
-steps:
-  - uses: actions/checkout@v4
-  - uses: actions/setup-node@v4
-    with:
-      node-version: 22
-  - run: npm ci
-  - run: npx @vscode/vsce publish --oidc
+Trusted publishing only works inside GitHub Actions. To publish from a laptop:
+
+- **Marketplace:** run `npm run package` and upload the
+  `GDS-Lens-<version>.vsix` on the publisher management page. `npm run
+  publish:vsce` needs a global Azure DevOps personal access token in
+  `VSCE_PAT`, and Azure DevOps stops accepting those on 1 December 2026.
+- **Open VSX:** put an access token from your open-vsx.org profile in
+  `OVSX_PAT` in `.env.publish` (copy
+  [`.env.publish.example`](.env.publish.example)), then run
+  `npm run publish:ovsx`. `scripts/with-env.sh` loads the file so the token
+  never lands in shell history.
+
+Before the first Open VSX publish you must sign the Eclipse Publisher Agreement
+(with an Eclipse account whose email matches your GitHub account) and claim the
+namespace, which has to match `publisher` in `package.json`:
+
+```sh
+sh scripts/with-env.sh npx ovsx create-namespace ethml
 ```
-
-It deliberately does *not* fall back to a PAT if the exchange fails. The
-tradeoff is that releases must run in CI - `--oidc` cannot work from a laptop,
-since there is no Actions token to exchange. Note that moving releases into CI
-is not just a matter of swapping the auth flag: the viewer payload comes from
-the `gds-lens` package, so a CI runner needs that package installed from the
-registry rather than from the local `file:` path used in development.
-
-**`vsce publish --azure-credential`.** Available today, and the only documented
-replacement. Entra ID via workload identity federation: an Azure DevOps service
-connection, a user-assigned managed identity in Azure with a Reader role,
-federated credentials exchanged between the two, the identity added as a
-Contributor member of the Marketplace publisher, and an Azure Pipelines job that
-mints an Entra token. It assumes an Azure subscription and Azure Pipelines,
-neither of which this project uses - disproportionate for a solo extension.
-
-**Plan of record:** stay on `VSCE_PAT` for now, and re-check `--oidc` around
-Q3 2026. Microsoft needs a GitHub Actions story before retiring PATs on
-1 December 2026, and `--oidc` already exists on `main`, so it is very likely to
-ship in time. If it has not shipped by ~November 2026, fall back to
-`--azure-credential`.
 
 ## Tests
 
@@ -571,7 +547,7 @@ The tests stub the viewer side, so they do not depend on the version of
 `gds-lens` installed. CI (`.github/workflows/ci.yml`) runs on every push and
 pull request: `npm ci`, lint with no warnings allowed, compile, `npm test`,
 and `vsce package` as a manifest check. It never publishes and uses no
-secrets. `npm ci` installs `gds-lens` from the registry at the version
+secrets; publishing is the separate `publish.yml` workflow. `npm ci` installs `gds-lens` from the registry at the version
 `package-lock.json` pins, so a change that needs an unreleased library feature
 fails in CI until the library is published and the dependency bumped.
 
